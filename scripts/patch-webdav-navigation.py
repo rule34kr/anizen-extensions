@@ -376,48 +376,45 @@ import java.util.concurrent.ConcurrentHashMap
     webdav_path.write_text(source, encoding="utf-8")
 
     nfo = nfo_path.read_text(encoding="utf-8")
-    nfo = replace_once(
-        nfo,
-        """
-        while (event != XmlPullParser.END_DOCUMENT) {
-            when (event) {
-                XmlPullParser.DOCDECL -> throw IOException("NFO XML에서 DOCTYPE 선언은 허용되지 않습니다.")
-                XmlPullParser.START_TAG -> {
-                    val tag = parser.name.substringAfterLast(':').lowercase(Locale.ROOT)
-                    if (tag in textTags) {
-                        val value = parser.nextText().trim()
-                        if (value.isNotEmpty()) values.getOrPut(tag) { mutableListOf() }.add(value)
-                    }
-                }
-            }
-            event = parser.next()
-        }
-        """,
-        """
-        while (event != XmlPullParser.END_DOCUMENT) {
-            when (event) {
-                XmlPullParser.DOCDECL -> throw IOException("NFO XML에서 DOCTYPE 선언은 허용되지 않습니다.")
-                XmlPullParser.START_TAG -> {
-                    val tag = parser.name.substringAfterLast(':').lowercase(Locale.ROOT)
-                    if (tag in textTags) {
-                        val valueEvent = parser.next()
-                        if (valueEvent == XmlPullParser.TEXT || valueEvent == XmlPullParser.CDSECT) {
-                            val value = parser.text.trim()
-                            if (value.isNotEmpty()) values.getOrPut(tag) { mutableListOf() }.add(value)
-                            event = parser.next()
-                        } else {
-                            // The <season> root can be a container; continue parsing its child tags.
-                            event = valueEvent
-                        }
-                        continue
-                    }
-                }
-            }
-            event = parser.next()
-        }
-        """,
-        "NFO container and leaf tag parsing",
-    )
+    old_parser_loop = "\n".join([
+        "        while (event != XmlPullParser.END_DOCUMENT) {",
+        "            when (event) {",
+        "                XmlPullParser.DOCDECL -> throw IOException(\"NFO XML에서 DOCTYPE 선언은 허용되지 않습니다.\")",
+        "                XmlPullParser.START_TAG -> {",
+        "                    val tag = parser.name.substringAfterLast(':').lowercase(Locale.ROOT)",
+        "                    if (tag in textTags) {",
+        "                        val value = parser.nextText().trim()",
+        "                        if (value.isNotEmpty()) values.getOrPut(tag) { mutableListOf() }.add(value)",
+        "                    }",
+        "                }",
+        "            }",
+        "            event = parser.next()",
+        "        }",
+    ])
+    new_parser_loop = "\n".join([
+        "        while (event != XmlPullParser.END_DOCUMENT) {",
+        "            when (event) {",
+        "                XmlPullParser.DOCDECL -> throw IOException(\"NFO XML에서 DOCTYPE 선언은 허용되지 않습니다.\")",
+        "                XmlPullParser.START_TAG -> {",
+        "                    val tag = parser.name.substringAfterLast(':').lowercase(Locale.ROOT)",
+        "                    if (tag in textTags) {",
+        "                        val valueEvent = parser.next()",
+        "                        if (valueEvent == XmlPullParser.TEXT || valueEvent == XmlPullParser.CDSECT) {",
+        "                            val value = parser.text.trim()",
+        "                            if (value.isNotEmpty()) values.getOrPut(tag) { mutableListOf() }.add(value)",
+        "                            event = parser.next()",
+        "                        } else {",
+        "                            // The <season> root can be a container; continue parsing its child tags.",
+        "                            event = valueEvent",
+        "                        }",
+        "                        continue",
+        "                    }",
+        "                }",
+        "            }",
+        "            event = parser.next()",
+        "        }",
+    ])
+    nfo = replace_once(nfo, old_parser_loop, new_parser_loop, "NFO container and leaf tag parsing")
     nfo = replace_once(
         nfo,
         "    val episode: Int? = null,\n    val runtimeMinutes: Int? = null,",
