@@ -93,12 +93,19 @@ jobs:
             }
           done
           sed -i -E \
+            -e 's#^distributionUrl=.*#distributionUrl=https\\://downloads.gradle.org/distributions/gradle-9.7.1-bin.zip#' \
             -e 's/^networkTimeout=.*/networkTimeout=120000/' \
             -e 's/^retries=.*/retries=5/' \
             -e 's/^retryBackOffMs=.*/retryBackOffMs=2000/' \
             "$properties"
+          gradle_sha256="acd53f1edaf02f1a8ff99879f8a34b302661a057d9b063ae9e35b552f804d20a"
+          if grep -q '^distributionSha256Sum=' "$properties"; then
+            sed -i "s/^distributionSha256Sum=.*/distributionSha256Sum=$gradle_sha256/" "$properties"
+          else
+            printf '\\ndistributionSha256Sum=%s\\n' "$gradle_sha256" >> "$properties"
+          fi
           echo "Gradle wrapper download configuration:"
-          grep -E '^(distributionUrl|networkTimeout|retries|retryBackOffMs)=' "$properties"
+          grep -E '^(distributionUrl|distributionSha256Sum|networkTimeout|retries|retryBackOffMs)=' "$properties"
 
       - name: Prepare signing key
         env:
@@ -204,6 +211,8 @@ jobs:
             echo "- Commit: \`${GITHUB_SHA}\`"
             echo "- Module: \`src/all/webdav\`"
             echo "- Gradle: \`9.7.1\`"
+            echo "- Distribution host: \`downloads.gradle.org\`"
+            echo "- Distribution SHA-256: verified against the official Gradle checksum"
             echo "- Gradle distribution retries: **5**"
             echo "- Retry backoff: **2s, 4s, 8s, 16s, 32s**"
             echo
