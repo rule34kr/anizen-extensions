@@ -290,7 +290,7 @@ import java.util.concurrent.ConcurrentHashMap
         folderCoverCache[key]?.let { return it }
 
         val directoryName = url.pathSegments.lastOrNull().orEmpty()
-        val seasonNumber = Regex("^season[\\s._-]*0*(\\d+)$", RegexOption.IGNORE_CASE)
+        val seasonNumber = Regex("^season[\\\\s._-]*0*(\\\\d+)$", RegexOption.IGNORE_CASE)
             .matchEntire(directoryName)?.groupValues?.getOrNull(1)?.toIntOrNull()
 
         val siblingPoster = if (seasonNumber != null) {
@@ -458,7 +458,7 @@ import java.util.concurrent.ConcurrentHashMap
     )
     xml_path.write_text(xml, encoding="utf-8")
 
-    print("Patched WebDAV: nested collection detection, parallel NFO loading, non-blocking folder covers, and episode NFO fields.")
+    print("Patched WebDAV: nested collection detection, season-container NFO parsing, synchronous multi-format folder covers, and episode NFO fields.")
 
 
 if __name__ == "__main__":
