@@ -17,7 +17,7 @@ def main() -> None:
         raise SystemExit("Usage: patch-webdav-navigation.py <upstream-root>")
 
     root = Path(sys.argv[1]).resolve()
-    base = root / "src/all/webdav/src/eu/kanade/tachiyomi/animeextension/all/webdav"
+    base = root / "src/ko/webdav/src/eu/kanade/tachiyomi/animeextension/ko/webdav"
     webdav_path = base / "WebDav.kt"
     nfo_path = base / "NfoXml.kt"
     xml_path = base / "net/WebDavXml.kt"
@@ -141,6 +141,8 @@ import java.util.concurrent.ConcurrentHashMap
         val path = displayPath(url)""",
         """        val metadata = readFolderNfo(url)
         applyNfoMetadata(anime, metadata)
+        // Folder progress is always completed; ignore any status value supplied by NFO.
+        anime.status = SAnime.COMPLETED
         attachDirectoryCover(anime, url)
         val path = displayPath(url)""",
         "folder detail cover from existing listing",
@@ -267,6 +269,8 @@ import java.util.concurrent.ConcurrentHashMap
     }""",
         """    private fun enrichDirectoryAnime(anime: SAnime, url: HttpUrl): SAnime {
         applyNfoMetadata(anime, readFolderNfo(url))
+        // Folder progress is always completed; NFO status must never override it.
+        anime.status = SAnime.COMPLETED
         attachDirectoryCover(anime, url)
         return anime
     }
