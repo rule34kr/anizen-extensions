@@ -2,6 +2,7 @@
 """Patch WebDAV navigation, NFO episode metadata and asynchronous folder artwork."""
 from pathlib import Path
 import sys
+import re
 
 
 def replace_once(source: str, old: str, new: str, label: str) -> str:
@@ -25,6 +26,21 @@ def main() -> None:
             raise SystemExit(f"Required WebDAV source file is missing: {path}")
 
     source = webdav_path.read_text(encoding="utf-8")
+
+    # Season metadata uses the same parsed title/plot fields as other folder NFOs.
+    # Prefer season.nfo when present; folders without it retain their existing NFO behavior.
+    folder_nfo_match = re.search(
+        r"(private fun readFolderNfo\(url: HttpUrl\): NfoMetadata\? \{.*?val candidates = listOf\(\n)",
+        source,
+        re.DOTALL,
+    )
+    if not folder_nfo_match:
+        raise SystemExit("Could not locate readFolderNfo candidate list for season.nfo support.")
+    source = (
+        source[:folder_nfo_match.end()]
+        + '            url.newBuilder().addPathSegment("season.nfo").build(),\n'
+        + source[folder_nfo_match.end():]
+    )
 
     source = replace_once(
         source,
@@ -240,7 +256,7 @@ import java.util.concurrent.Executors
     }""",
         """    private fun enrichDirectoryAnime(anime: SAnime, url: HttpUrl): SAnime {
         applyNfoMetadata(anime, readFolderNfo(url))
-        attachFolderCoverAsync(anime, url)
+        attachDirectoryCoverAsync(anime, url)
         return anime
     }
 
@@ -291,6 +307,46 @@ import java.util.concurrent.Executors
                         !it.isCollection && it.name.lowercase() in setOf("folder.jpg", "folder.png", "folder.webp")
                     }?.url?.toString()
                 }.getOrNull()
+                if (cover != null) {
+                    folderCoverCache[key] = cover
+                    anime.thumbnail_url = cover
+                }
+            } finally {
+                folderCoverChecks.remove(key)
+            }
+        }
+    }
+
+    private fun attachDirectoryCoverAsync(anime: SAnime, url: HttpUrl) {
+        val key = url.toString()
+        val cached = folderCoverCache[key]
+        anime.thumbnail_url = cached ?: folderCoverCandidates(url).first()
+        if (cached != null || !folderCoverChecks.add(key)) return
+
+        folderImageExecutor.execute {
+            try {
+                val directoryName = url.encodedPath.trimEnd('/').substringAfterLast('/')
+                val normalizedName = directoryName.lowercase().filter { it.isLetterOrDigit() }
+                val parentPath = url.encodedPath.trimEnd('/').substringBeforeLast('/', "") + "/"
+                val parentUrl = url.newBuilder().encodedPath(parentPath).build()
+                val seasonPosterName = "$normalizedName-poster.jpg"
+
+                val seasonPoster = if (normalizedName.startsWith("season")) {
+                    runCatching {
+                        listDirectory(parentUrl).firstOrNull {
+                            !it.isCollection && it.name.equals(seasonPosterName, ignoreCase = true)
+                        }?.url?.toString()
+                    }.getOrNull()
+                } else {
+                    null
+                }
+
+                val cover = seasonPoster ?: runCatching {
+                    listDirectory(url).firstOrNull {
+                        !it.isCollection && it.name.lowercase() in setOf("folder.jpg", "folder.png", "folder.webp")
+                    }?.url?.toString()
+                }.getOrNull()
+
                 if (cover != null) {
                     folderCoverCache[key] = cover
                     anime.thumbnail_url = cover
