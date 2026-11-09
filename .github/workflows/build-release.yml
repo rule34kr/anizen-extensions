@@ -36,6 +36,7 @@ jobs:
           test -f src/all/webdav/build.gradle
 
       - name: Validate signing secrets
+        id: validate_signing
         env:
           SIGNING_KEY: ${{ secrets.SIGNING_KEY }}
           ALIAS: ${{ secrets.ALIAS }}
@@ -78,6 +79,27 @@ jobs:
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@9c971963bec38e04b3d30dcc455b5382be2fdbfb # v6.3.0
 
+      - name: Configure Gradle distribution download retries
+        working-directory: upstream
+        shell: bash
+        run: |
+          set -euo pipefail
+          properties="gradle/wrapper/gradle-wrapper.properties"
+          test -f "$properties"
+          for key in networkTimeout retries retryBackOffMs; do
+            grep -q "^\${key}=" "$properties" || {
+              echo "Missing Gradle wrapper property: $key" >&2
+              exit 1
+            }
+          done
+          sed -i -E \
+            -e 's/^networkTimeout=.*/networkTimeout=120000/' \
+            -e 's/^retries=.*/retries=5/' \
+            -e 's/^retryBackOffMs=.*/retryBackOffMs=2000/' \
+            "$properties"
+          echo "Gradle wrapper download configuration:"
+          grep -E '^(distributionUrl|networkTimeout|retries|retryBackOffMs)=' "$properties"
+
       - name: Prepare signing key
         env:
           SIGNING_KEY: ${{ secrets.SIGNING_KEY }}
@@ -88,6 +110,7 @@ jobs:
           chmod 600 upstream/signingkey.jks
 
       - name: Build signed release APK
+        id: build_release
         working-directory: upstream
         env:
           ALIAS: ${{ secrets.ALIAS }}
@@ -162,6 +185,54 @@ jobs:
           path: upstream/repo/apk/*.apk
           if-no-files-found: error
           retention-days: 14
+
+      - name: Write build summary
+        if: always()
+        shell: bash
+        env:
+          JOB_STATUS: ${{ job.status }}
+          SIGNING_VALIDATION_OUTCOME: ${{ steps.validate_signing.outcome }}
+          BUILD_OUTCOME: ${{ steps.build_release.outcome }}
+        run: |
+          set -euo pipefail
+          {
+            echo "# AniZen WebDAV extension build"
+            echo
+            echo "- Overall job: **${JOB_STATUS}**"
+            echo "- Signing-secret validation: **${SIGNING_VALIDATION_OUTCOME:-not run}**"
+            echo "- Release APK build: **${BUILD_OUTCOME:-not run}**"
+            echo "- Commit: \`${GITHUB_SHA}\`"
+            echo "- Module: \`src/all/webdav\`"
+            echo "- Gradle: \`9.7.1\`"
+            echo "- Gradle distribution retries: **5**"
+            echo "- Retry backoff: **2s, 4s, 8s, 16s, 32s**"
+            echo
+            echo "## Generated files"
+            if compgen -G "upstream/repo/apk/*.apk" >/dev/null; then
+              echo "- APK files:"
+              while IFS= read -r apk; do
+                echo "  - \`$(basename "$apk")\` ($(du -h "$apk" | cut -f1))"
+              done < <(find upstream/repo/apk -maxdepth 1 -type f -name '*.apk' -print | sort)
+            else
+              echo "- APK: not generated"
+            fi
+            for file in index.json index.min.json index.pb repo.json; do
+              if [[ -f "$file" ]]; then
+                echo "- \`$file\`: generated"
+              else
+                echo "- \`$file\`: not generated"
+              fi
+            done
+            if [[ "$JOB_STATUS" == "success" ]]; then
+              echo
+              echo "## AniZen repository URL"
+              echo "\`https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/main/repo.json\`"
+            else
+              echo
+              echo "## Troubleshooting"
+              echo "Open the failed step above for the exact error. If Gradle distribution download failed, the wrapper is configured to retry up to five times."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Remove signing material
         if: always()
