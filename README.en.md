@@ -4,6 +4,7 @@ Personal WebDAV extension distribution repository for AniZen.
 
 - Extension: WebDAV
 - Package: `eu.kanade.tachiyomi.animeextension.ko.webdav`
+- Language category: `ko` (Korean)
 - Extensions-lib baseline: v16
 - Default WebDAV port: `8081`
 - Instances: 1–10 independent WebDAV sources (default 3)
@@ -63,7 +64,7 @@ Do not send these values in chat or put them in source control.
 
 After adding all five secrets, open **Actions → Build and publish WebDAV extension → Run workflow** and run it on `main`.
 
-The workflow restores the source module, builds a signed Release APK with Java 17/Gradle, verifies its signing certificate, generates AniZen's Protobuf v2 repository index and legacy JSON indices, then publishes APKs and metadata to this repository. The WebDAV extension defaults to port `8081` (also when an HTTP address omits its port), supports up to 10 independent source instances (default 3), allows each instance to have its own display name, and tests connectivity through the same OkHttp WebDAV request used for browsing. Only the previous built-in default `http://192.168.0.10:8080` is migrated automatically; other explicitly configured ports are preserved.
+The workflow restores the source module, builds a signed Release APK with Java 17/Gradle, verifies its signing certificate, generates AniZen's Protobuf v2 repository index and legacy JSON indices, then publishes APKs and metadata to this repository. The extension and each exposed WebDAV source use the `ko` language category. The WebDAV extension defaults to port `8081` (also when an HTTP address omits its port), supports up to 10 independent source instances (default 3), allows each instance to have its own display name, and tests connectivity through the same OkHttp WebDAV request used for browsing. Only the previous built-in default `http://192.168.0.10:8080` is migrated automatically; other explicitly configured ports are preserved.
 
 Changes under `payload/` trigger a rebuild. Increment `extVersionCode` in the embedded `src/ko/webdav/build.gradle` before publishing an update. Initial source version: `16.1`.
 
