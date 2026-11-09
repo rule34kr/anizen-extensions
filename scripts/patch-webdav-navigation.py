@@ -36,7 +36,7 @@ def main() -> None:
     if next_method < 0:
         next_method = len(source)
     folder_nfo_section = source[folder_nfo_start:next_method]
-    candidate_list = re.search(r"(?:val\s+candidates\s*=\s*)?listOf\(\s*\n", folder_nfo_section)
+    candidate_list = re.search(r"(?:val\s+candidates\s*=\s*)?listOf\(", folder_nfo_section)
     if not candidate_list:
         raise SystemExit("Could not locate the readFolderNfo candidate list for season.nfo support.")
     insert_at = folder_nfo_start + candidate_list.end()
