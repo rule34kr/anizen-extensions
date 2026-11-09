@@ -17,10 +17,10 @@ def main() -> None:
         raise SystemExit("Usage: patch-webdav-runtime.py <upstream-root>")
 
     root = Path(sys.argv[1]).resolve()
-    source_path = root / "src/all/webdav/src/eu/kanade/tachiyomi/animeextension/all/webdav/WebDav.kt"
-    nfo_parser_path = root / "src/all/webdav/src/eu/kanade/tachiyomi/animeextension/all/webdav/NfoXml.kt"
-    manifest_path = root / "src/all/webdav/AndroidManifest.xml"
-    module_build_path = root / "src/all/webdav/build.gradle"
+    source_path = root / "src/ko/webdav/src/eu/kanade/tachiyomi/animeextension/ko/webdav/WebDav.kt"
+    nfo_parser_path = root / "src/ko/webdav/src/eu/kanade/tachiyomi/animeextension/ko/webdav/NfoXml.kt"
+    manifest_path = root / "src/ko/webdav/AndroidManifest.xml"
+    module_build_path = root / "src/ko/webdav/build.gradle"
     if (
         not source_path.is_file()
         or not nfo_parser_path.is_file()
@@ -28,6 +28,18 @@ def main() -> None:
         or not module_build_path.is_file()
     ):
         raise SystemExit("Restored WebDAV source, NFO parser, manifest or build.gradle is missing.")
+
+    # The extension source category is Korean (ko), not the generic all category.
+    # Update Kotlin package declarations and any matching manifest/Gradle references.
+    for candidate in module_build_path.parent.rglob("*"):
+        if candidate.is_file() and candidate.suffix.lower() in {".kt", ".java", ".xml", ".gradle", ".kts"}:
+            content = candidate.read_text(encoding="utf-8")
+            updated = content.replace(
+                "eu.kanade.tachiyomi.animeextension.all.webdav",
+                "eu.kanade.tachiyomi.animeextension.ko.webdav",
+            )
+            if updated != content:
+                candidate.write_text(updated, encoding="utf-8")
 
     source = source_path.read_text(encoding="utf-8")
 
@@ -241,7 +253,7 @@ def main() -> None:
     build = replace_once(build, "    extVersionCode = 2", "    extVersionCode = 11", "extension version code")
     module_build_path.write_text(build, encoding="utf-8")
 
-    print("Patched WebDAV: per-instance names, OkHttp-only connection test, default HTTP port, manifest metadata, versionCode 12.")
+    print("Patched WebDAV: per-instance names, OkHttp-only connection test, default HTTP port, manifest metadata, versionCode 13.")
 
 
 if __name__ == "__main__":
