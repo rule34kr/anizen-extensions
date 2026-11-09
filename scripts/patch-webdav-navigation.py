@@ -326,7 +326,7 @@ import java.util.concurrent.Executors
                 val parentUrl = url.newBuilder().encodedPath(parentPath).build()
                 val seasonPosterName = "$normalizedName-poster.jpg"
 
-                val seasonPoster = if (normalizedName.startsWith("season")) {
+                val seasonPoster: String? = if (normalizedName.startsWith("season")) {
                     runCatching {
                         listDirectory(parentUrl).firstOrNull {
                             !it.isCollection && it.name.equals(seasonPosterName, ignoreCase = true)
@@ -336,7 +336,7 @@ import java.util.concurrent.Executors
                     null
                 }
 
-                val cover = seasonPoster ?: runCatching {
+                val cover: String? = seasonPoster ?: runCatching {
                     listDirectory(url).firstOrNull {
                         !it.isCollection && it.name.lowercase() in setOf("folder.jpg", "folder.png", "folder.webp")
                     }?.url?.toString()
