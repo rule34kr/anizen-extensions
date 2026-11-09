@@ -1,0 +1,9 @@
+{
+  "index_v2": "https://raw.githubusercontent.com/rule34kr/anizen-extensions/main/index.pb",
+  "meta": {
+    "name": "AniZen WebDAV Extensions",
+    "shortName": "WDB",
+    "website": "https://github.com/rule34kr/anizen-extensions",
+    "signingKeyFingerprint": "25784c45930dab8f49f9097f9b0caba6f9507a421ee39f4c7e7801d9e3d3974b"
+  }
+}
