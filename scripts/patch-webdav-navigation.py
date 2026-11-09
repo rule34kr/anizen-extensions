@@ -58,7 +58,6 @@ def main() -> None:
         source,
         "import okhttp3.RequestBody.Companion.toRequestBody\n",
         """import okhttp3.RequestBody.Companion.toRequestBody
-import okhttp3.Headers
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -77,10 +76,10 @@ import java.util.concurrent.ConcurrentHashMap
     private val folderCoverCache = ConcurrentHashMap<String, String>()
     private val folderCoverSemaphore = Semaphore(4)
 
-    // AniZen uses source.headers when downloading thumbnail_url images.
-    // Expose the same per-instance WebDAV authentication headers used by probes.
-    override val headers: Headers
-        get() = authHeaders()
+    // AnimeHttpSource.headers is final; customize the builder used to create it.
+    // This lets AniZen's cover fetcher use the same per-instance WebDAV credentials.
+    override fun headersBuilder(): Headers.Builder = super.headersBuilder()
+        .addAll(authHeaders())
 """,
         "asynchronous folder image state",
     )
