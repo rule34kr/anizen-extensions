@@ -110,8 +110,14 @@ import java.util.concurrent.Executors
 
     source = replace_once(
         source,
-        "        findFolderCover(url)?.let { anime.thumbnail_url = it }",
-        "        applyFolderCoverFromEntries(anime, url, entries)",
+        """        val metadata = readFolderNfo(url)
+        applyNfoMetadata(anime, metadata)
+        findFolderCover(url)?.let { anime.thumbnail_url = it }
+        val path = displayPath(url)""",
+        """        val metadata = readFolderNfo(url)
+        applyNfoMetadata(anime, metadata)
+        applyFolderCoverFromEntries(anime, url, entries)
+        val path = displayPath(url)""",
         "folder detail cover from existing listing",
     )
 
