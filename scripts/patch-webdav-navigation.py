@@ -413,14 +413,17 @@ import java.util.concurrent.ConcurrentHashMap
         return null
     }
 
-    private fun isTogetherPath(url: HttpUrl): Boolean =
-        url.pathSegments.any { it.equals("같이보기", ignoreCase = true) }
-
-    private fun isMoviePath(url: HttpUrl): Boolean =
-        url.pathSegments.any { it.equals("영화", ignoreCase = true) }
+    // These categories store artwork inside each folder itself.
+    // Keep the existing season-parent poster logic for animation and all other paths.
+    private fun usesCurrentFolderArtwork(url: HttpUrl): Boolean {
+        val artworkCategories = setOf("영화", "같이보기", "반찬", "야동")
+        return url.pathSegments.any { segment ->
+            artworkCategories.any { it.equals(segment, ignoreCase = true) }
+        }
+    }
 
     private fun attachFolderCover(anime: SAnime, url: HttpUrl) {
-        val cover = if (isTogetherPath(url) || isMoviePath(url)) {
+        val cover = if (usesCurrentFolderArtwork(url)) {
             resolveCurrentFolderImage(url)
         } else {
             resolveDirectoryCover(url)
@@ -429,7 +432,7 @@ import java.util.concurrent.ConcurrentHashMap
     }
 
     private fun attachDirectoryCover(anime: SAnime, url: HttpUrl) {
-        val cover = if (isTogetherPath(url) || isMoviePath(url)) {
+        val cover = if (usesCurrentFolderArtwork(url)) {
             resolveCurrentFolderImage(url)
         } else {
             resolveDirectoryCover(url)
