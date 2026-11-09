@@ -76,10 +76,6 @@ import java.util.concurrent.ConcurrentHashMap
     private val folderCoverCache = ConcurrentHashMap<String, String>()
     private val folderCoverSemaphore = Semaphore(4)
 
-    // AnimeHttpSource.headers is final; customize the builder used to create it.
-    // This lets AniZen's cover fetcher use the same per-instance WebDAV credentials.
-    override fun headersBuilder(): Headers.Builder = super.headersBuilder()
-        .addAll(authHeaders())
 """,
         "asynchronous folder image state",
     )
