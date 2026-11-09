@@ -419,6 +419,9 @@ import java.util.concurrent.ConcurrentHashMap
     webdav_path.write_text(source, encoding="utf-8")
 
     nfo = nfo_path.read_text(encoding="utf-8")
+    # Do not even ingest the NFO <status> tag. Folder status is controlled only
+    # by the extension default (SAnime.COMPLETED), never by server-side NFO data.
+    nfo = re.sub(r'(?m)^[ \\t]*"status",[ \\t]*\\n', "", nfo)
     old_parser_loop = "\n".join([
         "        while (event != XmlPullParser.END_DOCUMENT) {",
         "            when (event) {",
