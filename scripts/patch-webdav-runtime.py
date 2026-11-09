@@ -17,6 +17,20 @@ def main() -> None:
         raise SystemExit("Usage: patch-webdav-runtime.py <upstream-root>")
 
     root = Path(sys.argv[1]).resolve()
+
+    # The bundled source archive still stores the module in src/all. Relocate it
+    # into src/ko and rename its Kotlin package directory before applying patches.
+    legacy_module = root / "src/all/webdav"
+    module_dir = root / "src/ko/webdav"
+    if not module_dir.exists() and legacy_module.exists():
+        module_dir.parent.mkdir(parents=True, exist_ok=True)
+        legacy_module.rename(module_dir)
+
+    legacy_package = module_dir / "src/eu/kanade/tachiyomi/animeextension/all/webdav"
+    korean_package = module_dir / "src/eu/kanade/tachiyomi/animeextension/ko/webdav"
+    if legacy_package.exists() and not korean_package.exists():
+        korean_package.parent.mkdir(parents=True, exist_ok=True)
+        legacy_package.rename(korean_package)
     source_path = root / "src/ko/webdav/src/eu/kanade/tachiyomi/animeextension/ko/webdav/WebDav.kt"
     nfo_parser_path = root / "src/ko/webdav/src/eu/kanade/tachiyomi/animeextension/ko/webdav/NfoXml.kt"
     manifest_path = root / "src/ko/webdav/AndroidManifest.xml"
@@ -250,10 +264,10 @@ def main() -> None:
     manifest_path.write_text(manifest, encoding="utf-8")
 
     build = module_build_path.read_text(encoding="utf-8")
-    build = replace_once(build, "    extVersionCode = 2", "    extVersionCode = 11", "extension version code")
+    build = replace_once(build, "    extVersionCode = 2", "    extVersionCode = 12", "extension version code")
     module_build_path.write_text(build, encoding="utf-8")
 
-    print("Patched WebDAV: per-instance names, OkHttp-only connection test, default HTTP port, manifest metadata, versionCode 13.")
+    print("Patched WebDAV: per-instance names, OkHttp-only connection test, default HTTP port, manifest metadata, versionCode 12.")
 
 
 if __name__ == "__main__":
