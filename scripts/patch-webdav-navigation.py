@@ -29,17 +29,21 @@ def main() -> None:
 
     # Season metadata uses the same parsed title/plot fields as other folder NFOs.
     # Prefer season.nfo when present; folders without it retain their existing NFO behavior.
-    folder_nfo_match = re.search(
-        r"(private fun readFolderNfo\(url: HttpUrl\): NfoMetadata\? \{.*?val candidates = listOf\(\n)",
-        source,
-        re.DOTALL,
-    )
-    if not folder_nfo_match:
-        raise SystemExit("Could not locate readFolderNfo candidate list for season.nfo support.")
+    folder_nfo_start = source.find("readFolderNfo(")
+    if folder_nfo_start < 0:
+        raise SystemExit("Could not locate readFolderNfo for season.nfo support.")
+    next_method = source.find("\\n    private fun ", folder_nfo_start + 1)
+    if next_method < 0:
+        next_method = len(source)
+    folder_nfo_section = source[folder_nfo_start:next_method]
+    candidate_list = re.search(r"(?:val\\s+candidates\\s*=\\s*)?listOf\\(\\s*\\n", folder_nfo_section)
+    if not candidate_list:
+        raise SystemExit("Could not locate the readFolderNfo candidate list for season.nfo support.")
+    insert_at = folder_nfo_start + candidate_list.end()
     source = (
-        source[:folder_nfo_match.end()]
-        + '            url.newBuilder().addPathSegment("season.nfo").build(),\n'
-        + source[folder_nfo_match.end():]
+        source[:insert_at]
+        + '            url.newBuilder().addPathSegment("season.nfo").build(),\\n'
+        + source[insert_at:]
     )
 
     source = replace_once(
@@ -283,15 +287,7 @@ import java.util.concurrent.Executors
         }
 
     private fun applyFolderCoverFromEntries(anime: SAnime, url: HttpUrl, entries: List<DavEntry>) {
-        val cover = entries.firstOrNull {
-            !it.isCollection && it.name.lowercase() in setOf("folder.jpg", "folder.png", "folder.webp")
-        }?.url?.toString()
-        if (cover != null) {
-            folderCoverCache[url.toString()] = cover
-            anime.thumbnail_url = cover
-        } else {
-            attachFolderCoverAsync(anime, url)
-        }
+        attachDirectoryCoverAsync(anime, url)
     }
 
     private fun attachFolderCoverAsync(anime: SAnime, url: HttpUrl) {
