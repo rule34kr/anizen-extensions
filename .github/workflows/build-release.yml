@@ -327,7 +327,7 @@ jobs:
               # that differs from the index published by an earlier queued run.
               # In that specific case, keep this run's freshly generated index.
               mapfile -t conflicts < <(git diff --name-only --diff-filter=U | sort)
-              if (("${#conflicts[@]}" == 0)); then
+              if ((${#conflicts[@]} == 0)); then
                 git rebase --abort
                 echo "Rebase failed without merge conflicts; refusing to continue." >&2
                 exit 1
