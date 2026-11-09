@@ -170,6 +170,20 @@ import java.util.concurrent.Executors
         "parallel episode NFO loading",
     )
 
+    # Recommendation is a list of the current folder's contents, not a breadcrumb.
+    # Do not inject the immediate parent directory as a related/recommended item.
+    import re
+    source, parent_count = re.subn(
+        r"\\n[ \\t]*parentDirectory\\(current\\)\\?\\.let \\{ parent ->\\n"
+        r"[ \\t]*directories \\+= directoryAnime\\(parent, displayName\\(parent\\)\\)\\n"
+        r"[ \\t]*\\}\\n",
+        "\\n",
+        source,
+        count=1,
+    )
+    if parent_count != 1:
+        raise SystemExit(f"Expected exactly one immediate-parent Recommendation block; found {parent_count}")
+
     source = replace_once(
         source,
         """        val directories = ArrayList<SAnime>()
