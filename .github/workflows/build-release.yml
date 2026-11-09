@@ -128,6 +128,18 @@ jobs:
           printf '%s' "$SIGNING_KEY" | base64 --decode > upstream/signingkey.jks
           chmod 600 upstream/signingkey.jks
 
+      - name: Dump WebDAV source for refactor analysis
+        working-directory: upstream
+        shell: bash
+        run: |
+          set -euo pipefail
+          source_file="$(find src/all/webdav/src -type f -name 'WebDav.kt' -print -quit)"
+          test -n "$source_file"
+          echo "## Full WebDAV source: $source_file" >> "$GITHUB_STEP_SUMMARY"
+          echo '~~~kotlin' >> "$GITHUB_STEP_SUMMARY"
+          cat "$source_file" >> "$GITHUB_STEP_SUMMARY"
+          echo '~~~' >> "$GITHUB_STEP_SUMMARY"
+
       - name: Inspect WebDAV preference source
         working-directory: upstream
         shell: bash
