@@ -141,7 +141,7 @@ import java.util.concurrent.ConcurrentHashMap
         val path = displayPath(url)""",
         """        val metadata = readFolderNfo(url)
         applyNfoMetadata(anime, metadata)
-        applyFolderCoverFromEntries(anime, url, entries)
+        attachDirectoryCover(anime, url)
         val path = displayPath(url)""",
         "folder detail cover from existing listing",
     )
@@ -241,6 +241,7 @@ import java.util.concurrent.ConcurrentHashMap
         }
         this.url = directoryUrl.toString()
         title = titleText
+        status = SAnime.COMPLETED
         description = "경로: ${displayPath(directoryUrl)}"
         initialized = false
     }""",
@@ -285,7 +286,7 @@ import java.util.concurrent.ConcurrentHashMap
             contentType?.endsWith("/directory") == true
     }
 
-    private fun resolveDirectoryCover(url: HttpUrl, ownEntries: List<DavEntry>? = null): String? {
+    private fun resolveDirectoryCover(url: HttpUrl): String? {
         val key = url.toString()
         folderCoverCache[key]?.let { return it }
 
@@ -293,44 +294,70 @@ import java.util.concurrent.ConcurrentHashMap
         val seasonNumber = Regex("^season[\\\\s._-]*0*(\\\\d+)$", RegexOption.IGNORE_CASE)
             .matchEntire(directoryName)?.groupValues?.getOrNull(1)?.toIntOrNull()
 
-        val siblingPoster = if (seasonNumber != null) {
+        val siblingPosterBaseName = when {
+            seasonNumber == null -> null
+            seasonNumber == 0 -> "season-specials-poster"
+            else -> "season${seasonNumber.toString().padStart(2, '0')}-poster"
+        }
+
+        // Probe the exact candidate URLs with the authenticated WebDAV client.
+        // Relying on PROPFIND entry names can fail on servers that return encoded
+        // hrefs or incomplete directory listings. HEAD is preferred; GET with a
+        // one-byte range is used when the server does not support HEAD.
+        fun findImage(baseUrl: HttpUrl, baseName: String): String? {
+            val extensions = listOf(
+                "jpg", "jpeg", "png", "webp", "avif", "heic", "heif",
+                "jxl", "gif", "bmp", "tif", "tiff",
+            )
+            for (extension in extensions) {
+                val candidate = baseUrl.newBuilder()
+                    .addPathSegment("$baseName.$extension")
+                    .build()
+                val exists = runCatching {
+                    val head = Request.Builder()
+                        .url(candidate)
+                        .headers(authHeaders())
+                        .head()
+                        .build()
+                    client.newCall(head).execute().use { response ->
+                        if (response.isSuccessful) {
+                            true
+                        } else if (response.code == 404) {
+                            false
+                        } else {
+                            val get = Request.Builder()
+                                .url(candidate)
+                                .headers(authHeaders())
+                                .header("Range", "bytes=0-0")
+                                .get()
+                                .build()
+                            client.newCall(get).execute().use { it.isSuccessful }
+                        }
+                    }
+                }.getOrElse { false }
+                if (exists) return candidate.toString()
+            }
+            return null
+        }
+
+        val siblingPoster = siblingPosterBaseName?.let { baseName ->
             val encodedPath = url.encodedPath.trimEnd('/')
             val parentPath = encodedPath.substringBeforeLast('/', "").let {
                 if (it.isEmpty()) "/" else "$it/"
             }
             val parentUrl = url.newBuilder().encodedPath(parentPath).build()
-            // Season 00 is the Specials folder and uses its dedicated sibling artwork name.
-            // If that artwork is absent, the folder.<image extension> fallback below is used.
-            val posterBaseName = if (seasonNumber == 0) {
-                "season-specials-poster"
-            } else {
-                "season${seasonNumber.toString().padStart(2, '0')}-poster"
-            }
-            runCatching {
-                listDirectory(parentUrl).firstOrNull { entry ->
-                    !entry.isCollection && listOf("jpg", "jpeg", "png", "webp").any { extension ->
-                        entry.name.equals("$posterBaseName.$extension", ignoreCase = true)
-                    }
-                }?.url?.toString()
-            }.getOrNull()
+            findImage(parentUrl, baseName)
+        }
+
+        val localFolderCover = if (siblingPoster == null) {
+            findImage(url, "folder")
         } else {
             null
         }
 
-        val localEntries = ownEntries ?: runCatching { listDirectory(url) }.getOrNull().orEmpty()
-        val localFolderCover = localEntries.firstOrNull { entry ->
-            !entry.isCollection && listOf("jpg", "jpeg", "png", "webp").any { extension ->
-                entry.name.equals("folder.$extension", ignoreCase = true)
-            }
-        }?.url?.toString()
-
         val cover = siblingPoster ?: localFolderCover
         if (cover != null) folderCoverCache[key] = cover
         return cover
-    }
-
-    private fun applyFolderCoverFromEntries(anime: SAnime, url: HttpUrl, entries: List<DavEntry>) {
-        resolveDirectoryCover(url, entries)?.let { anime.thumbnail_url = it }
     }
 
     private fun attachFolderCover(anime: SAnime, url: HttpUrl) {
