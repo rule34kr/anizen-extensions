@@ -322,7 +322,30 @@ jobs:
             # building. Rebase the generated publication commit onto the latest
             # main branch before pushing, rather than failing with non-fast-forward.
             git fetch origin main
-            git rebase origin/main
+            if ! git rebase origin/main; then
+              # The pinned upstream generator can produce a complete index
+              # that differs from the index published by an earlier queued run.
+              # In that specific case, keep this run's freshly generated index.
+              mapfile -t conflicts < <(git diff --name-only --diff-filter=U | sort)
+              if (("${#conflicts[@]}" == 0)); then
+                git rebase --abort
+                echo "Rebase failed without merge conflicts; refusing to continue." >&2
+                exit 1
+              fi
+              for path in "${conflicts[@]}"; do
+                case "$path" in
+                  index.min.json|index.pb) ;;
+                  *)
+                    git rebase --abort
+                    echo "Unexpected publication conflict: $path" >&2
+                    exit 1
+                    ;;
+                esac
+              done
+              git checkout --theirs -- "${conflicts[@]}"
+              git add -- "${conflicts[@]}"
+              GIT_EDITOR=true git rebase --continue
+            fi
             git push origin HEAD:main
           else
             echo "Repository outputs are already up to date."
