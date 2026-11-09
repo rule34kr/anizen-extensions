@@ -213,7 +213,6 @@ import java.util.concurrent.Executors
 
     # Recommendation is a list of the current folder's contents, not a breadcrumb.
     # Do not inject the immediate parent directory as a related/recommended item.
-    import re
     source, parent_count = re.subn(
         r"(?ms)^[ \t]*parentDirectory\(current\)\?\.let \{ parent ->\n.*?^[ \t]*\}\s*\n",
         "\n",
