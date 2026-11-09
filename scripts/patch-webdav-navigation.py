@@ -289,7 +289,7 @@ import java.util.concurrent.ConcurrentHashMap
         val key = url.toString()
         folderCoverCache[key]?.let { return it }
 
-        val directoryName = url.pathSegments.lastOrNull().orEmpty()
+        val directoryName = url.pathSegments.lastOrNull { it.isNotEmpty() }.orEmpty()
         val seasonNumber = Regex("^season[\\\\s._-]*0*(\\\\d+)$", RegexOption.IGNORE_CASE)
             .matchEntire(directoryName)?.groupValues?.getOrNull(1)?.toIntOrNull()
 
