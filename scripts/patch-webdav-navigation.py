@@ -58,10 +58,13 @@ def main() -> None:
         source,
         "import okhttp3.RequestBody.Companion.toRequestBody\n",
         """import okhttp3.RequestBody.Companion.toRequestBody
+import okhttp3.Headers
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 import java.util.concurrent.ConcurrentHashMap
 """,
         "coroutine and image executor imports",
@@ -72,6 +75,12 @@ import java.util.concurrent.ConcurrentHashMap
         '    private val credentialVault by lazy { CredentialVault(context, "anizen_webdav_$id") }\n',
         """    private val credentialVault by lazy { CredentialVault(context, "anizen_webdav_$id") }
     private val folderCoverCache = ConcurrentHashMap<String, String>()
+    private val folderCoverSemaphore = Semaphore(4)
+
+    // AniZen uses source.headers when downloading thumbnail_url images.
+    // Expose the same per-instance WebDAV authentication headers used by probes.
+    override val headers: Headers
+        get() = authHeaders()
 """,
         "asynchronous folder image state",
     )
@@ -91,10 +100,12 @@ import java.util.concurrent.ConcurrentHashMap
         val items = coroutineScope {
             entries.map { entry ->
                 async(Dispatchers.IO) {
-                    when {
-                        isDirectoryEntry(entry) -> enrichDirectoryAnime(directoryAnime(entry.url, entry.name), entry.url)
-                        isVideoFile(entry.name) -> enrichFileAnime(fileSearchAnime(entry), entry.url)
-                        else -> null
+                    folderCoverSemaphore.withPermit {
+                        when {
+                            isDirectoryEntry(entry) -> enrichDirectoryAnime(directoryAnime(entry.url, entry.name), entry.url)
+                            isVideoFile(entry.name) -> enrichFileAnime(fileSearchAnime(entry), entry.url)
+                            else -> null
+                        }
                     }
                 }
             }.awaitAll().filterNotNull()
@@ -121,10 +132,12 @@ import java.util.concurrent.ConcurrentHashMap
         val matches = coroutineScope {
             sortEntries(entries).map { entry ->
                 async(Dispatchers.IO) {
-                    if (isDirectoryEntry(entry)) {
-                        enrichDirectoryAnime(directoryAnime(entry.url, entry.name), entry.url)
-                    } else {
-                        enrichFileAnime(fileSearchAnime(entry), entry.url)
+                    folderCoverSemaphore.withPermit {
+                        if (isDirectoryEntry(entry)) {
+                            enrichDirectoryAnime(directoryAnime(entry.url, entry.name), entry.url)
+                        } else {
+                            enrichFileAnime(fileSearchAnime(entry), entry.url)
+                        }
                     }
                 }
             }.awaitAll()
@@ -292,6 +305,57 @@ import java.util.concurrent.ConcurrentHashMap
             contentType?.endsWith("/directory") == true
     }
 
+    // A 404 is conclusive. Unsupported HEAD methods fall back to a ranged GET;
+    // transient server/network failures are retried instead of being cached as no cover.
+    private fun probeFolderImage(candidate: HttpUrl): Boolean {
+        repeat(3) { attempt ->
+            try {
+                val headRequest = Request.Builder()
+                    .url(candidate)
+                    .headers(authHeaders())
+                    .head()
+                    .build()
+                val headCode = client.newCall(headRequest).execute().use { response ->
+                    when {
+                        response.isSuccessful -> return true
+                        response.code == 404 -> return false
+                        response.code == 401 || response.code == 403 -> return false
+                        else -> response.code
+                    }
+                }
+
+                // 405/501 means HEAD is unsupported; for other non-404 responses,
+                // a ranged GET also handles WebDAV servers with unusual HEAD behavior.
+                val getRequest = Request.Builder()
+                    .url(candidate)
+                    .headers(authHeaders())
+                    .header("Range", "bytes=0-0")
+                    .get()
+                    .build()
+                val getCode = client.newCall(getRequest).execute().use { response ->
+                    when {
+                        response.isSuccessful -> return true
+                        response.code == 404 -> return false
+                        response.code == 401 || response.code == 403 -> return false
+                        else -> response.code
+                    }
+                }
+                if (headCode !in 500..599 && getCode !in 500..599 && getCode != 429) return false
+            } catch (_: Exception) {
+                // Retry below; an I/O error is not evidence that the image is absent.
+            }
+            if (attempt < 2) {
+                try {
+                    Thread.sleep(200L * (attempt + 1))
+                } catch (_: InterruptedException) {
+                    Thread.currentThread().interrupt()
+                    return false
+                }
+            }
+        }
+        return false
+    }
+
     private fun resolveDirectoryCover(url: HttpUrl): String? {
         val key = url.toString()
         folderCoverCache[key]?.let { return it }
@@ -319,29 +383,7 @@ import java.util.concurrent.ConcurrentHashMap
                 val candidate = baseUrl.newBuilder()
                     .addPathSegment("$baseName.$extension")
                     .build()
-                val exists = runCatching {
-                    val head = Request.Builder()
-                        .url(candidate)
-                        .headers(authHeaders())
-                        .head()
-                        .build()
-                    client.newCall(head).execute().use { response ->
-                        if (response.isSuccessful) {
-                            true
-                        } else if (response.code == 404) {
-                            false
-                        } else {
-                            val get = Request.Builder()
-                                .url(candidate)
-                                .headers(authHeaders())
-                                .header("Range", "bytes=0-0")
-                                .get()
-                                .build()
-                            client.newCall(get).execute().use { it.isSuccessful }
-                        }
-                    }
-                }.getOrElse { false }
-                if (exists) return candidate.toString()
+                if (probeFolderImage(candidate)) return candidate.toString()
             }
             return null
         }
@@ -383,29 +425,7 @@ import java.util.concurrent.ConcurrentHashMap
             val candidate = url.newBuilder()
                 .addPathSegment("folder.$extension")
                 .build()
-            val exists = runCatching {
-                val head = Request.Builder()
-                    .url(candidate)
-                    .headers(authHeaders())
-                    .head()
-                    .build()
-                client.newCall(head).execute().use { response ->
-                    if (response.isSuccessful) {
-                        true
-                    } else if (response.code == 404) {
-                        false
-                    } else {
-                        val get = Request.Builder()
-                            .url(candidate)
-                            .headers(authHeaders())
-                            .header("Range", "bytes=0-0")
-                            .get()
-                            .build()
-                        client.newCall(get).execute().use { it.isSuccessful }
-                    }
-                }
-            }.getOrElse { false }
-            if (exists) {
+            if (probeFolderImage(candidate)) {
                 folderCoverCache[key] = candidate.toString()
                 return candidate.toString()
             }
