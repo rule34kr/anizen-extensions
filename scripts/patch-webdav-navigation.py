@@ -205,7 +205,9 @@ import java.util.concurrent.ConcurrentHashMap
 
         parentDirectory(current)?.let { parent ->""",
         """        val directories = coroutineScope {
-            sortEntries(entries.filter(::isDirectoryEntry)).map { entry ->
+            sortEntries(entries.filter(::isDirectoryEntry).filterNot {
+                it.name.equals("theme-music", ignoreCase = true)
+            }).map { entry ->
                 async(Dispatchers.IO) {
                     enrichDirectoryAnime(directoryAnime(entry.url, entry.name), entry.url)
                 }
@@ -340,22 +342,26 @@ import java.util.concurrent.ConcurrentHashMap
             return null
         }
 
+        // Season artwork is stored beside the season directory, in its parent.
+        val encodedPath = url.encodedPath.trimEnd('/')
+        val parentPath = encodedPath.substringBeforeLast('/', "").let {
+            if (it.isEmpty()) "/" else "$it/"
+        }
+        val parentUrl = url.newBuilder().encodedPath(parentPath).build()
+
         val siblingPoster = siblingPosterBaseName?.let { baseName ->
-            val encodedPath = url.encodedPath.trimEnd('/')
-            val parentPath = encodedPath.substringBeforeLast('/', "").let {
-                if (it.isEmpty()) "/" else "$it/"
-            }
-            val parentUrl = url.newBuilder().encodedPath(parentPath).build()
             findImage(parentUrl, baseName)
         }
 
-        val localFolderCover = if (siblingPoster == null) {
-            findImage(url, "folder")
+        // folder.jpg (or another supported extension) is also a sibling of the
+        // season directory, and is used only when its dedicated poster is absent.
+        val parentFolderCover = if (siblingPoster == null) {
+            findImage(parentUrl, "folder")
         } else {
             null
         }
 
-        val cover = siblingPoster ?: localFolderCover
+        val cover = siblingPoster ?: parentFolderCover
         if (cover != null) folderCoverCache[key] = cover
         return cover
     }
