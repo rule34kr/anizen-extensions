@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Patch the restored WebDAV module for AniZen runtime behavior."""
 from pathlib import Path
+import re
 import sys
 
 
@@ -54,6 +55,21 @@ def main() -> None:
             )
             if updated != content:
                 candidate.write_text(updated, encoding="utf-8")
+
+    # The extension category and each exposed WebDAV source language are
+    # separate metadata fields. Keep the source entries Korean as well.
+    language_pattern = re.compile(
+        r'(?m)^(\\s*override\\s+val\\s+lang\\s*(?::\\s*String)?\\s*=\\s*)"all"(\\s*(?://.*)?$)'
+    )
+    language_replacements = 0
+    for kotlin_file in module_build_path.parent.rglob("*.kt"):
+        kotlin_text = kotlin_file.read_text(encoding="utf-8")
+        kotlin_text, count = language_pattern.subn(r'\\1"ko"\\2', kotlin_text)
+        if count:
+            kotlin_file.write_text(kotlin_text, encoding="utf-8")
+            language_replacements += count
+    if language_replacements == 0:
+        raise SystemExit("Could not find any source lang = \\"all\\" declaration to change to \\"ko\\".")
 
     source = source_path.read_text(encoding="utf-8")
 
@@ -264,10 +280,10 @@ def main() -> None:
     manifest_path.write_text(manifest, encoding="utf-8")
 
     build = module_build_path.read_text(encoding="utf-8")
-    build = replace_once(build, "    extVersionCode = 2", "    extVersionCode = 12", "extension version code")
+    build = replace_once(build, "    extVersionCode = 2", "    extVersionCode = 13", "extension version code")
     module_build_path.write_text(build, encoding="utf-8")
 
-    print("Patched WebDAV: per-instance names, OkHttp-only connection test, default HTTP port, manifest metadata, versionCode 12.")
+    print("Patched WebDAV: per-instance names, OkHttp-only connection test, default HTTP port, manifest metadata, versionCode 13.")
 
 
 if __name__ == "__main__":
