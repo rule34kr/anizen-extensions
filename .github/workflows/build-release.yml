@@ -82,6 +82,12 @@ jobs:
           set -euo pipefail
           python scripts/patch-webdav-runtime.py upstream
 
+      - name: Patch WebDAV nested navigation, asynchronous covers and episode NFO
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/patch-webdav-navigation.py upstream
+
       - name: Set up Java 17
         uses: actions/setup-java@dd06d9cba3e5552c54d9f8ea23572deb30010f7c # v6.0.0
         with:
