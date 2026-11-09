@@ -266,7 +266,85 @@ jobs:
 
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add apk icon index.min.json index.pb repo.json
+          git add icon index.min.json index.pb repo.json
+          # .gitignore excludes *.apk globally; force-add built release APKs.
+          git add -f apk/
+          if ! git diff --cached --name-only | grep -Eq '^apk/[^/]+\.apk
+          if ! git diff --cached --quiet; then
+            git commit -m "Publish WebDAV extension"
+            git push origin HEAD:main
+          else
+            echo "Repository outputs are already up to date."
+          fi
+
+      - name: Upload APK build artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: webdav-extension-apk
+          path: upstream/repo/apk/*.apk
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Write build summary
+        if: always()
+        shell: bash
+        env:
+          JOB_STATUS: ${{ job.status }}
+          SIGNING_VALIDATION_OUTCOME: ${{ steps.validate_signing.outcome }}
+          BUILD_OUTCOME: ${{ steps.build_release.outcome }}
+        run: |
+          set -euo pipefail
+          {
+            echo "# AniZen WebDAV extension build"
+            echo
+            echo "- Overall job: **${JOB_STATUS}**"
+            echo "- Signing-secret validation: **${SIGNING_VALIDATION_OUTCOME:-not run}**"
+            echo "- Release APK build: **${BUILD_OUTCOME:-not run}**"
+            echo "- Commit: \`${GITHUB_SHA}\`"
+            echo "- Module: \`src/all/webdav\`"
+            echo "- Gradle: \`9.7.1\`"
+            echo "- Distribution host: \`downloads.gradle.org\`"
+            echo "- Distribution SHA-256: verified against the official Gradle checksum"
+            echo "- Gradle distribution retries: **5**"
+            echo "- Retry backoff: **2s, 4s, 8s, 16s, 32s**"
+            echo
+            echo "## Generated files"
+            if compgen -G "upstream/repo/apk/*.apk" >/dev/null; then
+              echo "- APK files:"
+              while IFS= read -r apk; do
+                echo "  - \`$(basename "$apk")\` ($(du -h "$apk" | cut -f1))"
+              done < <(find upstream/repo/apk -maxdepth 1 -type f -name '*.apk' -print | sort)
+            else
+              echo "- APK: not generated"
+            fi
+            for file in index.json index.min.json index.pb repo.json; do
+              if [[ -f "$file" ]]; then
+                echo "- \`$file\`: generated in repository root"
+              elif [[ -f "upstream/repo/$file" ]]; then
+                echo "- \`$file\`: generated in upstream/repo (not yet published)"
+              else
+                echo "- \`$file\`: not generated"
+              fi
+            done
+            if [[ "$JOB_STATUS" == "success" ]]; then
+              echo
+              echo "## AniZen repository URL"
+              echo "\`https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/main/repo.json\`"
+            else
+              echo
+              echo "## Troubleshooting"
+              echo "Open the failed step above for the exact error. If Gradle distribution download failed, the wrapper is configured to retry up to five times."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Remove signing material
+        if: always()
+        shell: bash
+        run: rm -f upstream/signingkey.jks
+; then
+            echo 'No APK file was staged for publication.' >&2
+            exit 1
+          fi
           if ! git diff --cached --quiet; then
             git commit -m "Publish WebDAV extension"
             git push origin HEAD:main
