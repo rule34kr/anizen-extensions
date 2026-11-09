@@ -31,7 +31,7 @@ jobs:
         run: |
           set -euo pipefail
           cat payload/webdav-core.part*.b64 | tr -d '\r\n ' | base64 --decode > "$RUNNER_TEMP/webdav-core.tar.xz"
-          echo "d6d3106fe34e9aadf649e757a05a155fd8ba54afbbd226d347be63f31cb1d78c  $RUNNER_TEMP/webdav-core.tar.xz" | sha256sum -c -
+          echo "9a5940c5b77efc16d6b39360a3c135fe02b0fc65ebf4b4a9f9e2ad845f7a9ce0  $RUNNER_TEMP/webdav-core.tar.xz" | sha256sum -c -
           tar -xJf "$RUNNER_TEMP/webdav-core.tar.xz" -C "$GITHUB_WORKSPACE"
           test -f src/all/webdav/build.gradle
 
