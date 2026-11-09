@@ -370,12 +370,71 @@ import java.util.concurrent.ConcurrentHashMap
         return cover
     }
 
+    private fun resolveCurrentFolderImage(url: HttpUrl): String? {
+        val key = "folder:$url"
+        folderCoverCache[key]?.let { return it }
+
+        // Movie and 같이보기 artwork belongs to the directory itself, not its parent.
+        // Probe common image extensions because PROPFIND listings can omit or encode names.
+        for (extension in listOf(
+            "jpg", "jpeg", "png", "webp", "avif", "heic", "heif",
+            "jxl", "gif", "bmp", "tif", "tiff",
+        )) {
+            val candidate = url.newBuilder()
+                .addPathSegment("folder.$extension")
+                .build()
+            val exists = runCatching {
+                val head = Request.Builder()
+                    .url(candidate)
+                    .headers(authHeaders())
+                    .head()
+                    .build()
+                client.newCall(head).execute().use { response ->
+                    if (response.isSuccessful) {
+                        true
+                    } else if (response.code == 404) {
+                        false
+                    } else {
+                        val get = Request.Builder()
+                            .url(candidate)
+                            .headers(authHeaders())
+                            .header("Range", "bytes=0-0")
+                            .get()
+                            .build()
+                        client.newCall(get).execute().use { it.isSuccessful }
+                    }
+                }
+            }.getOrElse { false }
+            if (exists) {
+                folderCoverCache[key] = candidate.toString()
+                return candidate.toString()
+            }
+        }
+        return null
+    }
+
+    private fun isTogetherPath(url: HttpUrl): Boolean =
+        url.pathSegments.any { it.equals("같이보기", ignoreCase = true) }
+
+    private fun isMoviePath(url: HttpUrl): Boolean =
+        url.pathSegments.any { it.equals("영화", ignoreCase = true) }
+
     private fun attachFolderCover(anime: SAnime, url: HttpUrl) {
-        resolveDirectoryCover(url)?.let { anime.thumbnail_url = it }
+        val cover = if (isTogetherPath(url) || isMoviePath(url)) {
+            resolveCurrentFolderImage(url)
+        } else {
+            resolveDirectoryCover(url)
+        }
+        cover?.let { anime.thumbnail_url = it }
     }
 
     private fun attachDirectoryCover(anime: SAnime, url: HttpUrl) {
-        resolveDirectoryCover(url)?.let { anime.thumbnail_url = it }
+        val cover = if (isTogetherPath(url) || isMoviePath(url)) {
+            resolveCurrentFolderImage(url)
+        } else {
+            resolveDirectoryCover(url)
+        }
+        cover?.let { anime.thumbnail_url = it }
     }""",
         "asynchronous folder cover discovery",
     )
