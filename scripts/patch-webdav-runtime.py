@@ -238,7 +238,7 @@ def main() -> None:
     manifest_path.write_text(manifest, encoding="utf-8")
 
     build = module_build_path.read_text(encoding="utf-8")
-    build = replace_once(build, "    extVersionCode = 2", "    extVersionCode = 5", "extension version code")
+    build = replace_once(build, "    extVersionCode = 2", "    extVersionCode = 6", "extension version code")
     module_build_path.write_text(build, encoding="utf-8")
 
     print("Patched WebDAV: per-instance names, OkHttp-only connection test, default HTTP port, manifest metadata, versionCode 5.")
