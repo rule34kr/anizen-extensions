@@ -1,9 +1,0 @@
-ext {
-    extName = 'WebDAV'
-    extClass = '.WebDavFactory'
-    extVersionCode = 2
-    libVersion = 16
-    isNsfw = false
-}
-
-apply from: "$rootDir/common.gradle"
