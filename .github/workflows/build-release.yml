@@ -102,7 +102,7 @@ jobs:
           if grep -q '^distributionSha256Sum=' "$properties"; then
             sed -i "s/^distributionSha256Sum=.*/distributionSha256Sum=$gradle_sha256/" "$properties"
           else
-            printf '\\ndistributionSha256Sum=%s\\n' "$gradle_sha256" >> "$properties"
+            printf '\ndistributionSha256Sum=%s\n' "$gradle_sha256" >> "$properties"
           fi
           echo "Gradle wrapper download configuration:"
           grep -E '^(distributionUrl|distributionSha256Sum|networkTimeout|retries|retryBackOffMs)=' "$properties"
