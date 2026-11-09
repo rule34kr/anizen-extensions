@@ -29,20 +29,20 @@ def main() -> None:
 
     # Season metadata uses the same parsed title/plot fields as other folder NFOs.
     # Prefer season.nfo when present; folders without it retain their existing NFO behavior.
-    folder_nfo_start = source.find("readFolderNfo(")
+    folder_nfo_start = source.find("private fun readFolderNfo")
     if folder_nfo_start < 0:
         raise SystemExit("Could not locate readFolderNfo for season.nfo support.")
-    next_method = source.find("\\n    private fun ", folder_nfo_start + 1)
+    next_method = source.find("\n    private fun ", folder_nfo_start + 1)
     if next_method < 0:
         next_method = len(source)
     folder_nfo_section = source[folder_nfo_start:next_method]
-    candidate_list = re.search(r"(?:val\\s+candidates\\s*=\\s*)?listOf\\(\\s*\\n", folder_nfo_section)
+    candidate_list = re.search(r"(?:val\s+candidates\s*=\s*)?listOf\(\s*\n", folder_nfo_section)
     if not candidate_list:
         raise SystemExit("Could not locate the readFolderNfo candidate list for season.nfo support.")
     insert_at = folder_nfo_start + candidate_list.end()
     source = (
         source[:insert_at]
-        + '            url.newBuilder().addPathSegment("season.nfo").build(),\\n'
+        + '            url.newBuilder().addPathSegment("season.nfo").build(),\n'
         + source[insert_at:]
     )
 
