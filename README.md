@@ -5,6 +5,8 @@ Personal WebDAV extension distribution repository for AniZen.
 - Extension: WebDAV
 - Package: `eu.kanade.tachiyomi.animeextension.all.webdav`
 - Extensions-lib baseline: v16
+- Default WebDAV port: `8081`
+- Instances: 1–10 independent WebDAV sources (default 3)
 - Build environment: `salmanbappi/sb-extensions-source` pinned to `c8d9cef922353b0399ee802d5a594d1884c9be41`
 
 ## AniZen repository URL
@@ -59,7 +61,7 @@ Do not send these values in chat or put them in source control.
 
 After adding all five secrets, open **Actions → Build and publish WebDAV extension → Run workflow** and run it on `main`.
 
-The workflow restores the source module, builds a signed Release APK with Java 17/Gradle, verifies its signing certificate, generates AniZen's Protobuf v2 repository index and legacy JSON indices, then publishes APKs and metadata to this repository.
+The workflow restores the source module, builds a signed Release APK with Java 17/Gradle, verifies its signing certificate, generates AniZen's Protobuf v2 repository index and legacy JSON indices, then publishes APKs and metadata to this repository. The WebDAV extension defaults to port `8081`, supports up to 10 independent source instances, and distinguishes DNS, TCP, and WebDAV request failures in its connection test.
 
 Changes under `payload/` trigger a rebuild. Increment `extVersionCode` in the embedded `src/all/webdav/build.gradle` before publishing an update. Initial source version: `16.1`.
 
