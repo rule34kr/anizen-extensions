@@ -82,7 +82,7 @@ jobs:
           set -euo pipefail
           python scripts/patch-webdav-runtime.py upstream
 
-      - name: Patch WebDAV nested navigation, asynchronous covers and episode NFO
+      - name: Patch WebDAV navigation, NFO parsing and resolved folder covers
         shell: bash
         run: |
           set -euo pipefail
