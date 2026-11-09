@@ -22,7 +22,7 @@ jobs:
           mkdir "$RUNNER_TEMP/source"
           tar -xJf "$RUNNER_TEMP/webdav.tar.xz" -C "$RUNNER_TEMP/source"
           for f in "$RUNNER_TEMP/source"/src/all/webdav/src/eu/kanade/tachiyomi/animeextension/all/webdav/*.kt; do
-            echo "===== SOURCE FILE: $(basename "$f") =====" >> "$GITHUB_STEP_SUMMARY"
-            cat "$f" >> "$GITHUB_STEP_SUMMARY"
-            echo >> "$GITHUB_STEP_SUMMARY"
+            echo "===== SOURCE FILE: $(basename "$f") ====="
+            cat "$f"
+            echo
           done
