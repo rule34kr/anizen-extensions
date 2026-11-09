@@ -253,6 +253,26 @@ jobs:
           java -jar ./.github/scripts/Inspector.jar "repo/apk" "output.json" "tmp"
           python ./.github/scripts/create-repo.py
 
+          # Fail before publication if the individual WebDAV sources are still
+          # categorized as multilingual in the generated repository metadata.
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          index = json.loads(Path("repo/index.min.json").read_text(encoding="utf-8"))
+          extension = next(
+              (item for item in index if item.get("pkg") == "eu.kanade.tachiyomi.animeextension.ko.webdav"),
+              None,
+          )
+          if extension is None:
+              raise SystemExit("WebDAV extension entry is missing from generated index.min.json")
+          sources = extension.get("sources") or []
+          languages = [source.get("lang") for source in sources]
+          print(f"Generated WebDAV source languages: {languages}")
+          if not sources or any(language != "ko" for language in languages):
+              raise SystemExit("WebDAV source language metadata must be ko for every source.")
+          PY
+
       - name: Generate AniZen Protobuf repository index
         env:
           SIGNING_KEY_FINGERPRINT: ${{ secrets.SIGNING_KEY_FINGERPRINT }}
@@ -298,6 +318,11 @@ jobs:
           git add -f apk/
           if ! git diff --cached --quiet; then
             git commit -m "Publish WebDAV extension"
+            # README or other documentation commits may land while the APK is
+            # building. Rebase the generated publication commit onto the latest
+            # main branch before pushing, rather than failing with non-fast-forward.
+            git fetch origin main
+            git rebase origin/main
             git push origin HEAD:main
           else
             echo "Repository outputs are already up to date."
