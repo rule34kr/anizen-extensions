@@ -87,7 +87,7 @@ jobs:
           properties="gradle/wrapper/gradle-wrapper.properties"
           test -f "$properties"
           for key in networkTimeout retries retryBackOffMs; do
-            grep -q "^\${key}=" "$properties" || {
+            grep -q "^${key}=" "$properties" || {
               echo "Missing Gradle wrapper property: $key" >&2
               exit 1
             }
