@@ -62,6 +62,10 @@ class WebDav(private val suffix: String) : Source() {
             .build()
     }
 
+    override fun headersBuilder(): Headers.Builder = super.headersBuilder().apply {
+        authHeaders()["Authorization"]?.let { add("Authorization", it) }
+    }
+
     private val credentialVault by lazy { CredentialVault(context, "anizen_webdav_$id") }
 
     override fun setupPreferenceScreen(screen: PreferenceScreen) {
@@ -201,10 +205,17 @@ class WebDav(private val suffix: String) : Source() {
     }
 
     override suspend fun getPopularAnime(page: Int): AnimesPage {
-        val root = rootUrl()
-        // Verify reachability when the source is opened, then expose the configured root folder.
-        listDirectory(root)
-        return AnimesPage(listOf(rootAnime(root)), false)
+        // The configured Root Path is the browsing root. Show its immediate children directly;
+        // do not insert a synthetic WebDAV/root card that requires an extra tap.
+        val entries = sortEntries(listDirectory(rootUrl()))
+        val items = ArrayList<SAnime>(entries.size)
+        for (entry in entries) {
+            when {
+                entry.isCollection -> items += enrichDirectoryAnime(directoryAnime(entry.url, entry.name), entry.url)
+                isVideoFile(entry.name) -> items += enrichFileAnime(fileSearchAnime(entry), entry.url)
+            }
+        }
+        return AnimesPage(items, false)
     }
 
     override suspend fun getLatestUpdates(page: Int): AnimesPage = getPopularAnime(page)
@@ -212,32 +223,50 @@ class WebDav(private val suffix: String) : Source() {
     override suspend fun getSearchAnime(page: Int, query: String, filters: AnimeFilterList): AnimesPage {
         if (query.isBlank()) return getPopularAnime(page)
 
-        // Search is intentionally limited to the configured root's immediate children. Recursive
-        // searching is expensive on large WebDAV trees and can be added as an explicit opt-in.
+        // Search is intentionally limited to the configured root's immediate children.
         val entries = listDirectory(rootUrl())
-        val matches = entries.filter { it.name.contains(query, ignoreCase = true) }
-            .map { entry ->
-                if (entry.isCollection) directoryAnime(entry.url, entry.name)
-                else fileSearchAnime(entry)
+            .filter { it.name.contains(query, ignoreCase = true) && (it.isCollection || isVideoFile(it.name)) }
+        val matches = ArrayList<SAnime>(entries.size)
+        for (entry in sortEntries(entries)) {
+            if (entry.isCollection) {
+                matches += enrichDirectoryAnime(directoryAnime(entry.url, entry.name), entry.url)
+            } else {
+                matches += enrichFileAnime(fileSearchAnime(entry), entry.url)
             }
+        }
         return AnimesPage(matches, false)
     }
 
     override suspend fun getAnimeDetails(anime: SAnime): SAnime {
         val url = anime.url.toHttpUrlOrNull() ?: throw IOException("잘못된 WebDAV 항목 주소입니다.")
         if (!isWithinRoot(url)) throw IOException("설정된 기본 경로 바깥의 항목은 열 수 없습니다.")
-        if (!url.encodedPath.endsWith('/')) return anime.apply { initialized = true }
+        if (!url.encodedPath.endsWith('/')) {
+            enrichFileAnime(anime, url)
+            return anime.apply { initialized = true }
+        }
 
         val entries = listDirectory(url)
         val folderName = if (url == rootUrl()) "WebDAV" else displayName(url)
+        val metadata = readFolderNfo(url)
+        applyNfoMetadata(anime, metadata)
+        findFolderCover(url)?.let { anime.thumbnail_url = it }
         val path = displayPath(url)
         return anime.apply {
-            title = folderName
+            title = metadata?.title ?: folderName
             description = buildString {
+                metadata?.plot?.takeIf { it.isNotBlank() }?.let {
+                    append(cleanPlot(it)).append("\n\n")
+                } ?: metadata?.outline?.takeIf { it.isNotBlank() }?.let {
+                    append(cleanPlot(it)).append("\n\n")
+                }
+                metadata?.year?.let { append("연도: ").append(it).append("\n") }
+                metadata?.mpaa?.let { append("등급: ").append(it).append("\n") }
+                metadata?.rating?.let { append("평점: ").append(it).append("\n") }
+                metadata?.runtimeMinutes?.let { append("재생 시간: ").append(it).append("분\n") }
                 append("경로: ").append(path)
                 append("\n폴더: ").append(entries.count { it.isCollection })
                 append(" · 영상: ").append(entries.count { !it.isCollection && isVideoFile(it.name) })
-            }
+            }.trim()
             initialized = true
         }
     }
@@ -251,14 +280,26 @@ class WebDav(private val suffix: String) : Source() {
             val name = displayName(url)
             if (isVideoFile(name)) listOf(DavEntry(url, name, false, -1L, 0L, null)) else emptyList()
         }
-        return sortEntries(files).mapIndexed { index, file ->
-            SEpisode.create().apply {
-                name = if (file.size >= 0L) "${file.name} · ${formatBytes(file.size)}" else file.name
+        val sortedFiles = sortEntries(files)
+        val episodes = ArrayList<SEpisode>(sortedFiles.size)
+        for ((index, file) in sortedFiles.withIndex()) {
+            val metadata = readFileNfo(file.url)
+            val episodeNumber = metadata?.episode ?: (index + 1)
+            val displayTitle = metadata?.title?.takeIf { it.isNotBlank() } ?: file.name
+            val episodeName = if (metadata?.season != null && metadata.episode != null) {
+                "S${metadata.season.toString().padStart(2, '0')}E${metadata.episode.toString().padStart(2, '0')} - $displayTitle"
+            } else {
+                displayTitle
+            }
+            episodes += SEpisode.create().apply {
+                name = if (file.size >= 0L) "$episodeName · ${formatBytes(file.size)}" else episodeName
                 this.url = file.url.toString()
-                episode_number = (index + 1).toFloat()
-                date_upload = file.modified
+                episode_number = episodeNumber.toFloat()
+                summary = metadata?.plot?.let(::cleanPlot) ?: metadata?.outline?.let(::cleanPlot)
+                date_upload = metadata?.premieredMillis ?: file.modified
             }
         }
+        return episodes
     }
 
     override suspend fun getVideoList(episode: SEpisode): List<Video> {
@@ -299,10 +340,10 @@ class WebDav(private val suffix: String) : Source() {
         } else {
             emptyList()
         }
-        val directories = entries.filter { it.isCollection }
-            .sortedBy { it.name.lowercase() }
-            .map { directoryAnime(it.url, it.name) }
-            .toMutableList()
+        val directories = ArrayList<SAnime>()
+        for (entry in sortEntries(entries.filter { it.isCollection })) {
+            directories += enrichDirectoryAnime(directoryAnime(entry.url, entry.name), entry.url)
+        }
 
         parentDirectory(current)?.let { parent ->
             directories.add(0, directoryAnime(parent, "↑ 상위 폴더"))
@@ -340,6 +381,92 @@ class WebDav(private val suffix: String) : Source() {
         description = if (entry.size >= 0) "${formatBytes(entry.size)} · ${displayPath(entry.url)}" else displayPath(entry.url)
         initialized = false
     }
+
+    private fun enrichDirectoryAnime(anime: SAnime, url: HttpUrl): SAnime {
+        applyNfoMetadata(anime, readFolderNfo(url))
+        findFolderCover(url)?.let { anime.thumbnail_url = it }
+        return anime
+    }
+
+    private fun enrichFileAnime(anime: SAnime, url: HttpUrl): SAnime {
+        applyNfoMetadata(anime, readFileNfo(url))
+        val parentPath = url.encodedPath.substringBeforeLast('/') + "/"
+        val parent = url.newBuilder().encodedPath(parentPath).build()
+        findFolderCover(parent)?.let { anime.thumbnail_url = it }
+        return anime
+    }
+
+    private fun applyNfoMetadata(anime: SAnime, metadata: NfoMetadata?) {
+        if (metadata == null) return
+        metadata.title?.takeIf { it.isNotBlank() }?.let { anime.title = it }
+        metadata.plot?.takeIf { it.isNotBlank() }?.let { anime.description = cleanPlot(it) }
+        metadata.genres.takeIf { it.isNotEmpty() }?.let { anime.genre = it.joinToString(", ") }
+        metadata.studio?.takeIf { it.isNotBlank() }?.let { anime.author = it }
+        metadata.season?.let { anime.season_number = it.toDouble() }
+        metadata.status?.lowercase()?.let {
+            anime.status = when (it) {
+                "continuing", "ongoing" -> SAnime.ONGOING
+                "ended", "complete", "completed" -> SAnime.COMPLETED
+                else -> anime.status
+            }
+        }
+    }
+
+    private fun readFolderNfo(url: HttpUrl): NfoMetadata? {
+        val names = listOf("tvshow.nfo", "season.nfo", "movie.nfo", "folder.nfo")
+        return fetchNfo(names.map { url.newBuilder().addPathSegment(it).build() })
+    }
+
+    private fun readFileNfo(url: HttpUrl): NfoMetadata? {
+        val fileName = displayName(url)
+        val baseName = fileName.substringBeforeLast('.', fileName)
+        val parentPath = url.encodedPath.substringBeforeLast('/') + "/"
+        val parent = url.newBuilder().encodedPath(parentPath).build()
+        val candidates = listOf(
+            parent.newBuilder().addPathSegment("$baseName.nfo").build(),
+            parent.newBuilder().addPathSegment("movie.nfo").build(),
+        )
+        return fetchNfo(candidates)
+    }
+
+    private fun fetchNfo(candidates: List<HttpUrl>): NfoMetadata? {
+        for (candidate in candidates) {
+            try {
+                val request = Request.Builder().url(candidate).headers(authHeaders()).get().build()
+                val metadata = client.newCall(request).execute().use { response ->
+                    if (!response.isSuccessful) {
+                        null
+                    } else {
+                        response.body?.byteStream()?.use { NfoXml.parse(it) }
+                    }
+                }
+                if (metadata != null) return metadata
+            } catch (_: Exception) {
+                // NFO is optional. A missing or malformed sidecar must not break browsing or playback.
+            }
+        }
+        return null
+    }
+
+    private fun findFolderCover(url: HttpUrl): String? {
+        for (extension in listOf("jpg", "png", "webp")) {
+            val candidate = url.newBuilder().addPathSegment("folder.$extension").build()
+            val exists = try {
+                val request = Request.Builder().url(candidate).headers(authHeaders()).head().build()
+                client.newCall(request).execute().use { it.isSuccessful }
+            } catch (_: Exception) {
+                false
+            }
+            if (exists) return candidate.toString()
+        }
+        return null
+    }
+
+    private fun cleanPlot(value: String): String = value
+        .replace(Regex("(?i)<br\\s*/?>"), "\n")
+        .replace(Regex("(?i)</p>"), "\n")
+        .replace(Regex("<[^>]*>"), "")
+        .trim()
 
     private fun listDirectory(url: HttpUrl): List<DavEntry> {
         val response = client.newCall(propfindRequest(url, "1")).execute()
