@@ -33,7 +33,7 @@ jobs:
           cat payload/webdav-core.part*.b64 | tr -d '\r\n ' | base64 --decode > "$RUNNER_TEMP/webdav-core.tar.xz"
           echo "9a5940c5b77efc16d6b39360a3c135fe02b0fc65ebf4b4a9f9e2ad845f7a9ce0  $RUNNER_TEMP/webdav-core.tar.xz" | sha256sum -c -
           tar -xJf "$RUNNER_TEMP/webdav-core.tar.xz" -C "$GITHUB_WORKSPACE"
-          test -f src/all/webdav/build.gradle
+          test -f src/ko/webdav/build.gradle
 
       - name: Validate signing secrets
         id: validate_signing
@@ -66,9 +66,9 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          rm -rf upstream/src/all/webdav
-          mkdir -p upstream/src/all
-          cp -a src/all/webdav upstream/src/all/webdav
+          rm -rf upstream/src/ko/webdav
+          mkdir -p upstream/src/ko
+          cp -a src/ko/webdav upstream/src/ko/webdav
 
       - name: Patch WebDAV preference constructors
         shell: bash
@@ -93,11 +93,11 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          source_file="$(find src/all/webdav/src -type f -name 'WebDav.kt' -print -quit)"
+          source_file="$(find src/ko/webdav/src -type f -name 'WebDav.kt' -print -quit)"
           echo "WebDAV.kt NFO methods after all patches:"
           grep -nE 'NfoMetadata|readFolderNfo|fetchNfo|applyNfoMetadata|enrichDirectoryAnime|directoryAnime' "$source_file"
           nl -ba "$source_file" | sed -n '480,555p'
-          nfo_file="$(find src/all/***/src -type f -name 'NfoXml.kt' -print -quit)"
+          nfo_file="$(find src/ko/***/src -type f -name 'NfoXml.kt' -print -quit)"
           echo "NfoXml.kt parser:"
           cat "$nfo_file"
 
@@ -152,7 +152,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          source_file="$(find src/all/webdav/src -type f -name 'WebDav.kt' -print -quit)"
+          source_file="$(find src/ko/webdav/src -type f -name 'WebDav.kt' -print -quit)"
           test -n "$source_file"
           {
             echo "## WebDAV source: imports and preference setup"
@@ -174,9 +174,9 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          ./gradlew --no-daemon :src:all:webdav:assembleRelease
+          ./gradlew --no-daemon :src:ko:webdav:assembleRelease
           mkdir -p repo/apk
-          mapfile -t apks < <(find src/all/webdav/build/outputs/apk/release -type f -name '*.apk' -print)
+          mapfile -t apks < <(find src/ko/webdav/build/outputs/apk/release -type f -name '*.apk' -print)
           test "${#apks[@]}" -gt 0
           for apk in "${apks[@]}"; do cp "$apk" "repo/apk/$(basename "$apk")"; done
 
@@ -325,7 +325,7 @@ jobs:
             echo "- Signing-secret validation: **${SIGNING_VALIDATION_OUTCOME:-not run}**"
             echo "- Release APK build: **${BUILD_OUTCOME:-not run}**"
             echo "- Commit: \`${GITHUB_SHA}\`"
-            echo "- Module: \`src/all/webdav\`"
+            echo "- Module: \`src/ko/webdav\`"
             echo "- Gradle: \`9.7.1\`"
             echo "- Distribution host: \`downloads.gradle.org\`"
             echo "- Distribution SHA-256: verified against the official Gradle checksum"
