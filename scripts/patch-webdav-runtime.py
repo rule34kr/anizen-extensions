@@ -18,10 +18,16 @@ def main() -> None:
 
     root = Path(sys.argv[1]).resolve()
     source_path = root / "src/all/webdav/src/eu/kanade/tachiyomi/animeextension/all/webdav/WebDav.kt"
+    nfo_parser_path = root / "src/all/webdav/src/eu/kanade/tachiyomi/animeextension/all/webdav/NfoXml.kt"
     manifest_path = root / "src/all/webdav/AndroidManifest.xml"
     module_build_path = root / "src/all/webdav/build.gradle"
-    if not source_path.is_file() or not manifest_path.is_file() or not module_build_path.is_file():
-        raise SystemExit("Restored WebDAV source, manifest or build.gradle is missing.")
+    if (
+        not source_path.is_file()
+        or not nfo_parser_path.is_file()
+        or not manifest_path.is_file()
+        or not module_build_path.is_file()
+    ):
+        raise SystemExit("Restored WebDAV source, NFO parser, manifest or build.gradle is missing.")
 
     source = source_path.read_text(encoding="utf-8")
 
