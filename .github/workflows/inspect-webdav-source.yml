@@ -1,0 +1,26 @@
+name: Temporary WebDAV source recovery
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/inspect-webdav-source.yml'
+permissions:
+  contents: read
+jobs:
+  recover:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4.2.2
+        with:
+          ref: main
+      - name: Restore and print source
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat payload/webdav-core.part*.b64 | tr -d '\r\n ' | base64 --decode > "$RUNNER_TEMP/webdav-core.tar.xz"
+          echo "d6d3106fe34e9aadf649e757a05a155fd8ba54afbbd226d347be63f31cb1d78c  $RUNNER_TEMP/webdav-core.tar.xz" | sha256sum -c -
+          tar -xJf "$RUNNER_TEMP/webdav-core.tar.xz" -C "$GITHUB_WORKSPACE"
+          echo '===== MODULE FILES ====='
+          find src/all/webdav -type f -maxdepth 8 -print | sort
+          echo '===== WEBDAV KOTLIN SOURCE ====='
+          cat src/all/webdav/src/eu/kanade/tachiyomi/animeextension/all/webdav/WebDav.kt
