@@ -21,7 +21,7 @@ jobs:
           echo "9a5940c5b77efc16d6b39360a3c135fe02b0fc65ebf4b4a9f9e2ad845f7a9ce0  $RUNNER_TEMP/webdav.tar.xz" | sha256sum -c -
           mkdir "$RUNNER_TEMP/source"
           tar -xJf "$RUNNER_TEMP/webdav.tar.xz" -C "$RUNNER_TEMP/source"
-          for f in "$RUNNER_TEMP/source"/src/all/webdav/src/eu/kanade/tachiyomi/animeextension/all/webdav/*.kt; do
+          find "$RUNNER_TEMP/source/src/all/webdav/src" -type f -name '*.kt' -print0 | while IFS= read -r -d '' f; do
             echo "===== SOURCE FILE: $(basename "$f") ====="
             cat "$f"
             echo
