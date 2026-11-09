@@ -116,6 +116,23 @@ jobs:
           printf '%s' "$SIGNING_KEY" | base64 --decode > upstream/signingkey.jks
           chmod 600 upstream/signingkey.jks
 
+      - name: Inspect WebDAV preference source
+        working-directory: upstream
+        shell: bash
+        run: |
+          set -euo pipefail
+          source_file="$(find src/all/webdav/src -type f -name 'WebDav.kt' -print -quit)"
+          test -n "$source_file"
+          {
+            echo "## WebDAV source: imports and preference setup"
+            echo
+            echo "File: `$source_file`"
+            echo
+            echo '~~~kotlin'
+            nl -ba "$source_file" | sed -n '1,125p'
+            echo '~~~'
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+
       - name: Build signed release APK
         id: build_release
         working-directory: upstream
