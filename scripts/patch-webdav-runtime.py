@@ -241,7 +241,7 @@ def main() -> None:
     build = replace_once(build, "    extVersionCode = 2", "    extVersionCode = 9", "extension version code")
     module_build_path.write_text(build, encoding="utf-8")
 
-    print("Patched WebDAV: per-instance names, OkHttp-only connection test, default HTTP port, manifest metadata, versionCode 9.")
+    print("Patched WebDAV: per-instance names, OkHttp-only connection test, default HTTP port, manifest metadata, versionCode 10.")
 
 
 if __name__ == "__main__":
