@@ -174,9 +174,7 @@ import java.util.concurrent.Executors
     # Do not inject the immediate parent directory as a related/recommended item.
     import re
     source, parent_count = re.subn(
-        r"\n[ \t]*parentDirectory\(current\)\?\.let \{ parent ->\n"
-        r"[ \t]*directories \+= directoryAnime\(parent, displayName\(parent\)\)\n"
-        r"[ \t]*\}\n",
+        r"(?ms)^[ \t]*parentDirectory\(current\)\?\.let \{ parent ->\n.*?^[ \t]*\}\s*\n",
         "\n",
         source,
         count=1,
