@@ -138,7 +138,7 @@ jobs:
           {
             echo "## WebDAV source: imports and preference setup"
             echo
-            echo "File: `$source_file`"
+            echo "File: $source_file"
             echo
             echo '~~~kotlin'
             nl -ba "$source_file" | sed -n '1,125p'
