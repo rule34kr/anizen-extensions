@@ -27,3 +27,7 @@ jobs:
         run: |
           set -euo pipefail
           nl -ba src/all/webdav/src/eu/kanade/tachiyomi/animeextension/all/webdav/WebDav.kt
+          echo '--- module build.gradle ---'
+          cat src/all/webdav/build.gradle
+          echo '--- factory files ---'
+          find src/all/webdav/src -type f -iname '*Factory*' -print -exec cat {} \;
