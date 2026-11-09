@@ -239,20 +239,39 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+
+          # Publish only files actually produced by the upstream legacy generator
+          # and the AniZen v2 index generator. The upstream create-repo.py creates
+          # index.min.json, not index.json or index.html.
+          for required in \
+            upstream/repo/apk \
+            upstream/repo/icon \
+            upstream/repo/index.min.json \
+            upstream/repo/index.pb \
+            upstream/repo/repo.json; do
+            if [[ ! -e "$required" ]]; then
+              echo "Required repository output is missing: $required" >&2
+              exit 1
+            fi
+          done
+
           mkdir -p apk icon
           cp -a upstream/repo/apk/. apk/
           cp -a upstream/repo/icon/. icon/
-          cp upstream/repo/index.json index.json
-          cp upstream/repo/index.min.json index.min.json
-          cp upstream/repo/index.pb index.pb
-          cp upstream/repo/repo.json repo.json
-          cp upstream/repo/index.html index.html
+          install -m 0644 upstream/repo/index.min.json index.min.json
+          install -m 0644 upstream/repo/index.pb index.pb
+          install -m 0644 upstream/repo/repo.json repo.json
+
+          test -n "$(find apk -maxdepth 1 -type f -name '*.apk' -print -quit)"
+
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add apk icon index.json index.min.json index.pb repo.json index.html
+          git add apk icon index.min.json index.pb repo.json
           if ! git diff --cached --quiet; then
             git commit -m "Publish WebDAV extension"
             git push origin HEAD:main
+          else
+            echo "Repository outputs are already up to date."
           fi
 
       - name: Upload APK build artifact
