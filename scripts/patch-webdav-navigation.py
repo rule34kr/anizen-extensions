@@ -299,7 +299,13 @@ import java.util.concurrent.ConcurrentHashMap
                 if (it.isEmpty()) "/" else "$it/"
             }
             val parentUrl = url.newBuilder().encodedPath(parentPath).build()
-            val posterBaseName = "season${seasonNumber.toString().padStart(2, '0')}-poster"
+            // Season 00 is the Specials folder and uses its dedicated sibling artwork name.
+            // If that artwork is absent, the folder.<image extension> fallback below is used.
+            val posterBaseName = if (seasonNumber == 0) {
+                "season-specials-poster"
+            } else {
+                "season${seasonNumber.toString().padStart(2, '0')}-poster"
+            }
             runCatching {
                 listDirectory(parentUrl).firstOrNull { entry ->
                     !entry.isCollection && listOf("jpg", "jpeg", "png", "webp").any { extension ->
