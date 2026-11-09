@@ -18,10 +18,10 @@ def main() -> int:
         return 2
 
     root = Path(sys.argv[1]).resolve()
-    candidates = list((root / "src" / "all" / "webdav" / "src").rglob("WebDav.kt"))
+    candidates = list((root / "src" / "ko" / "webdav" / "src").rglob("WebDav.kt"))
     if len(candidates) != 1:
         raise SystemExit(
-            f"Expected exactly one WebDav.kt under src/all/webdav/src; found {len(candidates)}"
+            f"Expected exactly one WebDav.kt under src/ko/webdav/src; found {len(candidates)}"
         )
 
     source = candidates[0]
