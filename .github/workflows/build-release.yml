@@ -33,6 +33,8 @@ jobs:
           cat payload/webdav-core.part*.b64 | tr -d '\r\n ' | base64 --decode > "$RUNNER_TEMP/webdav-core.tar.xz"
           echo "9a5940c5b77efc16d6b39360a3c135fe02b0fc65ebf4b4a9f9e2ad845f7a9ce0  $RUNNER_TEMP/webdav-core.tar.xz" | sha256sum -c -
           tar -xJf "$RUNNER_TEMP/webdav-core.tar.xz" -C "$GITHUB_WORKSPACE"
+          mkdir -p src/ko
+          if [[ -d src/all/webdav ]]; then mv src/all/webdav src/ko/webdav; fi
           test -f src/ko/webdav/build.gradle
 
       - name: Validate signing secrets
@@ -97,7 +99,7 @@ jobs:
           echo "WebDAV.kt NFO methods after all patches:"
           grep -nE 'NfoMetadata|readFolderNfo|fetchNfo|applyNfoMetadata|enrichDirectoryAnime|directoryAnime' "$source_file"
           nl -ba "$source_file" | sed -n '480,555p'
-          nfo_file="$(find src/ko/***/src -type f -name 'NfoXml.kt' -print -quit)"
+          nfo_file="$(find src/ko/webdav/src -type f -name 'NfoXml.kt' -print -quit)"
           echo "NfoXml.kt parser:"
           cat "$nfo_file"
 
