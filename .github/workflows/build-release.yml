@@ -158,18 +158,58 @@ jobs:
       - name: Verify APK signing certificate
         working-directory: upstream
         env:
+          ALIAS: ${{ secrets.ALIAS }}
+          KEY_STORE_PASSWORD: ${{ secrets.KEY_STORE_PASSWORD }}
           SIGNING_KEY_FINGERPRINT: ${{ secrets.SIGNING_KEY_FINGERPRINT }}
         shell: bash
         run: |
           set -euo pipefail
           apk="$(find repo/apk -maxdepth 1 -type f -name '*.apk' -print -quit)"
+          [[ -n "$apk" ]] || { echo "No release APK found in repo/apk" >&2; exit 1; }
+
           sdk_root="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-}}"
-          test -n "$sdk_root"
+          [[ -n "$sdk_root" ]] || { echo "Android SDK path is not configured" >&2; exit 1; }
           apksigner="$(find "$sdk_root/build-tools" -type f -name apksigner | sort -V | tail -n1)"
-          test -x "$apksigner"
-          actual="$("$apksigner" verify --print-certs "$apk" | sed -n 's/^Signer #1 certificate SHA-256 digest: //p' | head -n1 | tr -d ':' | tr '[:upper:]' '[:lower:]' | tr -d '[:space:]')"
-          expected="$(printf '%s' "$SIGNING_KEY_FINGERPRINT" | tr '[:upper:]' '[:lower:]')"
-          test -n "$actual" && test "$actual" = "$expected"
+          [[ -x "$apksigner" ]] || { echo "apksigner executable was not found" >&2; exit 1; }
+
+          signer_output="$("$apksigner" verify --print-certs "$apk" 2>&1)" || {
+            echo "apksigner failed to verify the generated APK:"
+            echo "$signer_output"
+            exit 1
+          }
+          actual="$(printf '%s\\n' "$signer_output" | sed -n 's/^Signer #1 certificate SHA-256 digest: //p' | head -n1 | tr -d ':' | tr '[:upper:]' '[:lower:]' | tr -d '[:space:]')"
+          expected="$(printf '%s' "$SIGNING_KEY_FINGERPRINT" | tr -d ':' | tr '[:upper:]' '[:lower:]' | tr -d '[:space:]')"
+
+          [[ -n "$actual" ]] || {
+            echo "Could not read the signer SHA-256 digest from apksigner output:"
+            echo "$signer_output"
+            exit 1
+          }
+
+          keystore_output="$(keytool -list -v -keystore signingkey.jks -alias "$ALIAS" -storepass "$KEY_STORE_PASSWORD" 2>&1)" || {
+            echo "Could not inspect the temporary signing keystore:"
+            echo "$keystore_output"
+            exit 1
+          }
+          keystore_fp="$(printf '%s\\n' "$keystore_output" | sed -n 's/^[[:space:]]*SHA256:[[:space:]]*//p' | head -n1 | tr -d ':' | tr '[:upper:]' '[:lower:]' | tr -d '[:space:]')"
+
+          echo "APK signer SHA-256 : $actual"
+          echo "Keystore SHA-256   : ${keystore_fp:-not found}"
+          echo "Expected SHA-256   : $expected"
+
+          if [[ -z "$keystore_fp" ]]; then
+            echo "The keystore certificate SHA-256 fingerprint could not be extracted." >&2
+            exit 1
+          fi
+          if [[ "$keystore_fp" != "$expected" ]]; then
+            echo "SIGNING_KEY_FINGERPRINT does not match the certificate in SIGNING_KEY." >&2
+            exit 1
+          fi
+          if [[ "$actual" != "$keystore_fp" ]]; then
+            echo "The APK was signed with a different certificate than the supplied signing keystore." >&2
+            exit 1
+          fi
+          echo "APK signing certificate verified successfully."
 
       - name: Generate extension metadata and legacy index
         working-directory: upstream
