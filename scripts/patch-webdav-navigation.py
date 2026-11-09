@@ -42,7 +42,7 @@ def main() -> None:
     insert_at = folder_nfo_start + candidate_list.end()
     source = (
         source[:insert_at]
-        + '            url.newBuilder().addPathSegment("season.nfo").build(),\n'
+        + '            "season.nfo",\n'
         + source[insert_at:]
     )
 
