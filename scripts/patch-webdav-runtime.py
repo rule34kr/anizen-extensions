@@ -59,12 +59,12 @@ def main() -> None:
     # The extension category and each exposed WebDAV source language are
     # separate metadata fields. Keep the source entries Korean as well.
     language_pattern = re.compile(
-        r'(?m)^(\\s*override\\s+val\\s+lang\\s*(?::\\s*String)?\\s*=\\s*)"all"(\\s*(?://.*)?$)'
+        r'(?m)^(\s*override\s+val\s+lang\s*(?::\s*String)?\s*=\s*)"all"(\s*(?://.*)?$)'
     )
     language_replacements = 0
     for kotlin_file in module_build_path.parent.rglob("*.kt"):
         kotlin_text = kotlin_file.read_text(encoding="utf-8")
-        kotlin_text, count = language_pattern.subn(r'\\1"ko"\\2', kotlin_text)
+        kotlin_text, count = language_pattern.subn(r'\1"ko"\2', kotlin_text)
         if count:
             kotlin_file.write_text(kotlin_text, encoding="utf-8")
             language_replacements += count
