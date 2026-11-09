@@ -218,7 +218,9 @@ jobs:
             fi
             for file in index.json index.min.json index.pb repo.json; do
               if [[ -f "$file" ]]; then
-                echo "- \`$file\`: generated"
+                echo "- \`$file\`: generated in repository root"
+              elif [[ -f "upstream/repo/$file" ]]; then
+                echo "- \`$file\`: generated in upstream/repo (not yet published)"
               else
                 echo "- \`$file\`: not generated"
               fi
