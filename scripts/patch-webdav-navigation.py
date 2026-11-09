@@ -42,7 +42,8 @@ def main() -> None:
     # Studio is not author, and season number is not a supported SAnime property.
     source = replace_once(
         source,
-        """        metadata.plot?.takeIf { it.isNotBlank() }?.let { anime.description = cleanPlot(it) }
+        """        metadata.title?.takeIf { it.isNotBlank() }?.let { anime.title = it }
+        metadata.plot?.takeIf { it.isNotBlank() }?.let { anime.description = cleanPlot(it) }
         metadata.genres.takeIf { it.isNotEmpty() }?.let { anime.genre = it.joinToString(", ") }
         metadata.studio?.takeIf { it.isNotBlank() }?.let { anime.author = it }
         metadata.season?.let { anime.season_number = it.toDouble() }""",
@@ -62,7 +63,6 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import java.util.concurrent.ConcurrentHashMap
-import java.util.concurrent.Executors
 """,
         "coroutine and image executor imports",
     )
@@ -72,8 +72,6 @@ import java.util.concurrent.Executors
         '    private val credentialVault by lazy { CredentialVault(context, "anizen_webdav_$id") }\n',
         """    private val credentialVault by lazy { CredentialVault(context, "anizen_webdav_$id") }
     private val folderCoverCache = ConcurrentHashMap<String, String>()
-    private val folderCoverChecks = ConcurrentHashMap.newKeySet<String>()
-    private val folderImageExecutor by lazy { Executors.newFixedThreadPool(4) }
 """,
         "asynchronous folder image state",
     )
@@ -266,7 +264,7 @@ import java.util.concurrent.Executors
     }""",
         """    private fun enrichDirectoryAnime(anime: SAnime, url: HttpUrl): SAnime {
         applyNfoMetadata(anime, readFolderNfo(url))
-        attachDirectoryCoverAsync(anime, url)
+        attachDirectoryCover(anime, url)
         return anime
     }
 
@@ -274,7 +272,7 @@ import java.util.concurrent.Executors
         applyNfoMetadata(anime, readFileNfo(url))
         val parentPath = url.encodedPath.substringBeforeLast('/') + "/"
         val parent = url.newBuilder().encodedPath(parentPath).build()
-        attachFolderCoverAsync(anime, parent)
+        attachFolderCover(anime, parent)
         return anime
     }
 
@@ -287,76 +285,54 @@ import java.util.concurrent.Executors
             contentType?.endsWith("/directory") == true
     }
 
-    private fun folderCoverCandidates(url: HttpUrl): List<String> =
-        listOf("jpg", "png", "webp").map { extension ->
-            url.newBuilder().addPathSegment("folder.$extension").build().toString()
+    private fun resolveDirectoryCover(url: HttpUrl, ownEntries: List<DavEntry>? = null): String? {
+        val key = url.toString()
+        folderCoverCache[key]?.let { return it }
+
+        val directoryName = url.pathSegments.lastOrNull().orEmpty()
+        val seasonNumber = Regex("^season[\\s._-]*0*(\\d+)$", RegexOption.IGNORE_CASE)
+            .matchEntire(directoryName)?.groupValues?.getOrNull(1)?.toIntOrNull()
+
+        val siblingPoster = if (seasonNumber != null) {
+            val encodedPath = url.encodedPath.trimEnd('/')
+            val parentPath = encodedPath.substringBeforeLast('/', "").let {
+                if (it.isEmpty()) "/" else "$it/"
+            }
+            val parentUrl = url.newBuilder().encodedPath(parentPath).build()
+            val posterBaseName = "season${seasonNumber.toString().padStart(2, '0')}-poster"
+            runCatching {
+                listDirectory(parentUrl).firstOrNull { entry ->
+                    !entry.isCollection && listOf("jpg", "jpeg", "png", "webp").any { extension ->
+                        entry.name.equals("$posterBaseName.$extension", ignoreCase = true)
+                    }
+                }?.url?.toString()
+            }.getOrNull()
+        } else {
+            null
         }
+
+        val localEntries = ownEntries ?: runCatching { listDirectory(url) }.getOrNull().orEmpty()
+        val localFolderCover = localEntries.firstOrNull { entry ->
+            !entry.isCollection && listOf("jpg", "jpeg", "png", "webp").any { extension ->
+                entry.name.equals("folder.$extension", ignoreCase = true)
+            }
+        }?.url?.toString()
+
+        val cover = siblingPoster ?: localFolderCover
+        if (cover != null) folderCoverCache[key] = cover
+        return cover
+    }
 
     private fun applyFolderCoverFromEntries(anime: SAnime, url: HttpUrl, entries: List<DavEntry>) {
-        attachDirectoryCoverAsync(anime, url)
+        resolveDirectoryCover(url, entries)?.let { anime.thumbnail_url = it }
     }
 
-    private fun attachFolderCoverAsync(anime: SAnime, url: HttpUrl) {
-        val key = url.toString()
-        val cached = folderCoverCache[key]
-        anime.thumbnail_url = cached ?: folderCoverCandidates(url).first()
-        if (cached != null || !folderCoverChecks.add(key)) return
-
-        folderImageExecutor.execute {
-            try {
-                val cover = runCatching {
-                    listDirectory(url).firstOrNull {
-                        !it.isCollection && it.name.lowercase() in setOf("folder.jpg", "folder.png", "folder.webp")
-                    }?.url?.toString()
-                }.getOrNull()
-                if (cover != null) {
-                    folderCoverCache[key] = cover
-                    anime.thumbnail_url = cover
-                }
-            } finally {
-                folderCoverChecks.remove(key)
-            }
-        }
+    private fun attachFolderCover(anime: SAnime, url: HttpUrl) {
+        resolveDirectoryCover(url)?.let { anime.thumbnail_url = it }
     }
 
-    private fun attachDirectoryCoverAsync(anime: SAnime, url: HttpUrl) {
-        val key = url.toString()
-        val cached = folderCoverCache[key]
-        anime.thumbnail_url = cached ?: folderCoverCandidates(url).first()
-        if (cached != null || !folderCoverChecks.add(key)) return
-
-        folderImageExecutor.execute {
-            try {
-                val directoryName = url.encodedPath.trimEnd('/').substringAfterLast('/')
-                val normalizedName = directoryName.lowercase().filter { it.isLetterOrDigit() }
-                val parentPath = url.encodedPath.trimEnd('/').substringBeforeLast('/', "") + "/"
-                val parentUrl = url.newBuilder().encodedPath(parentPath).build()
-                val seasonPosterName = "$normalizedName-poster.jpg"
-
-                val seasonPoster: String? = if (normalizedName.startsWith("season")) {
-                    runCatching {
-                        listDirectory(parentUrl).firstOrNull {
-                            !it.isCollection && it.name.equals(seasonPosterName, ignoreCase = true)
-                        }?.url?.toString()
-                    }.getOrNull()
-                } else {
-                    null
-                }
-
-                val cover: String? = seasonPoster ?: runCatching {
-                    listDirectory(url).firstOrNull {
-                        !it.isCollection && it.name.lowercase() in setOf("folder.jpg", "folder.png", "folder.webp")
-                    }?.url?.toString()
-                }.getOrNull()
-
-                if (cover != null) {
-                    folderCoverCache[key] = cover
-                    anime.thumbnail_url = cover
-                }
-            } finally {
-                folderCoverChecks.remove(key)
-            }
-        }
+    private fun attachDirectoryCover(anime: SAnime, url: HttpUrl) {
+        resolveDirectoryCover(url)?.let { anime.thumbnail_url = it }
     }""",
         "asynchronous folder cover discovery",
     )
@@ -400,6 +376,48 @@ import java.util.concurrent.Executors
     webdav_path.write_text(source, encoding="utf-8")
 
     nfo = nfo_path.read_text(encoding="utf-8")
+    nfo = replace_once(
+        nfo,
+        """
+        while (event != XmlPullParser.END_DOCUMENT) {
+            when (event) {
+                XmlPullParser.DOCDECL -> throw IOException("NFO XML에서 DOCTYPE 선언은 허용되지 않습니다.")
+                XmlPullParser.START_TAG -> {
+                    val tag = parser.name.substringAfterLast(':').lowercase(Locale.ROOT)
+                    if (tag in textTags) {
+                        val value = parser.nextText().trim()
+                        if (value.isNotEmpty()) values.getOrPut(tag) { mutableListOf() }.add(value)
+                    }
+                }
+            }
+            event = parser.next()
+        }
+        """,
+        """
+        while (event != XmlPullParser.END_DOCUMENT) {
+            when (event) {
+                XmlPullParser.DOCDECL -> throw IOException("NFO XML에서 DOCTYPE 선언은 허용되지 않습니다.")
+                XmlPullParser.START_TAG -> {
+                    val tag = parser.name.substringAfterLast(':').lowercase(Locale.ROOT)
+                    if (tag in textTags) {
+                        val valueEvent = parser.next()
+                        if (valueEvent == XmlPullParser.TEXT || valueEvent == XmlPullParser.CDSECT) {
+                            val value = parser.text.trim()
+                            if (value.isNotEmpty()) values.getOrPut(tag) { mutableListOf() }.add(value)
+                            event = parser.next()
+                        } else {
+                            // The <season> root can be a container; continue parsing its child tags.
+                            event = valueEvent
+                        }
+                        continue
+                    }
+                }
+            }
+            event = parser.next()
+        }
+        """,
+        "NFO container and leaf tag parsing",
+    )
     nfo = replace_once(
         nfo,
         "    val episode: Int? = null,\n    val runtimeMinutes: Int? = null,",
