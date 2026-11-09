@@ -69,7 +69,7 @@ def main() -> None:
             kotlin_file.write_text(kotlin_text, encoding="utf-8")
             language_replacements += count
     if language_replacements == 0:
-        raise SystemExit("Could not find any source lang = \\"all\\" declaration to change to \\"ko\\".")
+        raise SystemExit('Could not find any source lang = "all" declaration to change to "ko".')
 
     source = source_path.read_text(encoding="utf-8")
 
