@@ -1,0 +1,165 @@
+name: Build and publish WebDAV extension
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'src/all/webdav/**'
+      - 'scripts/**'
+      - '.github/workflows/build-release.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: webdav-release
+  cancel-in-progress: false
+
+jobs:
+  build-and-publish:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - name: Checkout distribution repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4.2.2
+        with:
+          fetch-depth: 0
+
+      - name: Validate signing secrets
+        id: signing
+        env:
+          SIGNING_KEY: ${{ secrets.SIGNING_KEY }}
+          ALIAS: ${{ secrets.ALIAS }}
+          KEY_STORE_PASSWORD: ${{ secrets.KEY_STORE_PASSWORD }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+          SIGNING_KEY_FINGERPRINT: ${{ secrets.SIGNING_KEY_FINGERPRINT }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          for name in SIGNING_KEY ALIAS KEY_STORE_PASSWORD KEY_PASSWORD; do
+            value="${!name}"
+            if [[ -z "$value" ]]; then
+              echo "Required GitHub Actions secret is missing: $name" >&2
+              exit 1
+            fi
+          done
+          [[ "$SIGNING_KEY_FINGERPRINT" =~ ^[0-9a-fA-F]{64}$ ]] || {
+            echo 'SIGNING_KEY_FINGERPRINT must be 64 hexadecimal characters.' >&2
+            exit 1
+          }
+
+      - name: Checkout pinned extension build environment
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4.2.2
+        with:
+          repository: salmanbappi/sb-extensions-source
+          ref: c8d9cef922353b0399ee802d5a594d1884c9be41
+          path: upstream
+
+      - name: Overlay WebDAV module
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f src/all/webdav/build.gradle
+          rm -rf upstream/src/all/webdav
+          mkdir -p upstream/src/all
+          cp -a src/all/webdav upstream/src/all/webdav
+
+      - name: Set up Java 17
+        uses: actions/setup-java@dd06d9cba3e5552c54d9f8ea23572deb30010f7c # v6.0.0
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@9c971963bec38e04b3d30dcc455b5382be2fdbfb # v6.3.0
+
+      - name: Prepare signing key
+        env:
+          SIGNING_KEY: ${{ secrets.SIGNING_KEY }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          printf '%s' "$SIGNING_KEY" | base64 --decode > upstream/signingkey.jks
+          chmod 600 upstream/signingkey.jks
+
+      - name: Build signed release APK
+        working-directory: upstream
+        env:
+          ALIAS: ${{ secrets.ALIAS }}
+          KEY_STORE_PASSWORD: ${{ secrets.KEY_STORE_PASSWORD }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./gradlew --no-daemon :src:all:webdav:assembleRelease
+          mkdir -p repo/apk
+          mapfile -t apks < <(find src/all/webdav/build/outputs/apk/release -type f -name '*.apk' -print)
+          test "${#apks[@]}" -gt 0
+          for apk in "${apks[@]}"; do cp "$apk" "repo/apk/$(basename "$apk")"; done
+
+      - name: Verify APK signing certificate
+        working-directory: upstream
+        env:
+          SIGNING_KEY_FINGERPRINT: ${{ secrets.SIGNING_KEY_FINGERPRINT }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          apk="$(find repo/apk -maxdepth 1 -type f -name '*.apk' -print -quit)"
+          sdk_root="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-}}"
+          test -n "$sdk_root"
+          apksigner="$(find "$sdk_root/build-tools" -type f -name apksigner | sort -V | tail -n1)"
+          test -x "$apksigner"
+          actual="$("$apksigner" verify --print-certs "$apk" | sed -n 's/^Signer #1 certificate SHA-256 digest: //p' | head -n1 | tr -d ':' | tr '[:upper:]' '[:lower:]' | tr -d '[:space:]')"
+          expected="$(printf '%s' "$SIGNING_KEY_FINGERPRINT" | tr '[:upper:]' '[:lower:]')"
+          test -n "$actual" && test "$actual" = "$expected"
+
+      - name: Generate extension metadata and legacy index
+        working-directory: upstream
+        shell: bash
+        run: |
+          set -euo pipefail
+          java -jar ./.github/scripts/Inspector.jar "repo/apk" "output.json" "tmp"
+          python ./.github/scripts/create-repo.py
+
+      - name: Generate AniZen Protobuf repository index
+        env:
+          SIGNING_KEY_FINGERPRINT: ${{ secrets.SIGNING_KEY_FINGERPRINT }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install --disable-pip-version-check 'protobuf==7.36.2'
+          python scripts/generate-index-v2.py --repo-dir upstream/repo --owner "$GITHUB_REPOSITORY_OWNER" --repo "${GITHUB_REPOSITORY#*/}" --branch main --fingerprint "$SIGNING_KEY_FINGERPRINT"
+
+      - name: Publish APKs and repository indices
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p apk icon
+          cp -a upstream/repo/apk/. apk/
+          cp -a upstream/repo/icon/. icon/
+          cp upstream/repo/index.json index.json
+          cp upstream/repo/index.min.json index.min.json
+          cp upstream/repo/index.pb index.pb
+          cp upstream/repo/repo.json repo.json
+          cp upstream/repo/index.html index.html
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add apk icon index.json index.min.json index.pb repo.json index.html
+          if ! git diff --cached --quiet; then
+            git commit -m "Publish WebDAV extension"
+            git push origin HEAD:main
+          fi
+
+      - name: Upload APK build artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: webdav-extension-apk
+          path: upstream/repo/apk/*.apk
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Remove signing material
+        if: always()
+        shell: bash
+        run: rm -f upstream/signingkey.jks
